@@ -23,6 +23,7 @@ The command serves the included static files on `127.0.0.1` and opens the browse
 - Reconstruct turns and steps from recorded agent decisions instead of reading raw chunk events.
 - Follow tool calls, reasoning, assistant responses, errors, and the matching raw event in one workspace.
 - Inspect the rendered system prompt, model configuration, and tool catalog that governed each request; compare meaningful prompt or tool updates without repeating unchanged resumes.
+- Learn why those snapshots appear and how DSH uses them in [Request context epochs](docs/request-context-epochs.md).
 - Compare execution order, active recorded work, and wall-clock time with waits preserved.
 - Inspect event data as a collapsible JSON tree or copy the original JSON record.
 - Open exported session directories, JSONL, Zstandard-compressed JSONL, and DSH ZIP archives locally.
