@@ -24,6 +24,7 @@ npx @eriklee1895/dsh-session-log-explorer
 - 在同一工作区串联工具调用、推理、模型回复、错误与对应的原始事件。
 - 查看每个请求实际生效的 rendered system prompt、模型配置与工具目录；对比有意义的 prompt 或工具变更，不重复展示未变化的恢复快照。
 - 阅读 [DSH 请求上下文 Epoch](docs/request-context-epochs.zh.md)，理解这些快照为何出现、如何用于回放与恢复。
+- 从 [如何读一份 DSH Session Log](docs/session-semantics.zh.md) 开始，建立 Session、Turn、Step、surface、compaction 与 subagent 的整体心智模型。
 - 对比执行顺序、已记录的活跃执行时间，以及保留等待间隔的 wall-clock 时间。
 - 以可折叠 JSON 树检查事件数据，或复制原始 JSON 记录。
 - 在本地打开导出的会话目录、JSONL、Zstandard 压缩 JSONL 和 DSH ZIP。
