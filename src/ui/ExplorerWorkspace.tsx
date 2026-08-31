@@ -197,10 +197,10 @@ function StepPromptContext({ epoch, onEventSelect }: {
   if (epoch === undefined) return null
   const code = `E${String(epoch.ordinal).padStart(2, '0')}`
   return <div className="step-prompt-context">
-    <span>PROMPT {code}</span>
+    <span>CONTEXT {code}</span>
     <strong>{typeof epoch.config.model === 'string' ? epoch.config.model : 'model not recorded'}</strong>
     <small>{epoch.toolNames.length} {epoch.toolNames.length === 1 ? 'TOOL' : 'TOOLS'}</small>
-    <button aria-label={`View effective prompt ${code}`} onClick={() => { onEventSelect(epoch.eventId) }}>VIEW EFFECTIVE PROMPT</button>
+    <button aria-label={`View effective context ${code}`} onClick={() => { onEventSelect(epoch.eventId) }}>VIEW EFFECTIVE CONTEXT</button>
   </div>
 }
 

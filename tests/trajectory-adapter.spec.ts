@@ -49,13 +49,13 @@ describe('adaptTrajectoryTurns', () => {
     }]
     const items = [
       { id: 'root:1', eventId: 'root:1', kind: 'user' as const, label: 'user', start: 100, end: 100, eventSeqs: [1] },
-      { id: 'root:10', eventId: 'root:10', kind: 'system' as const, label: 'Initial System Prompt', start: 110, end: 110, eventSeqs: [10] },
+      { id: 'root:10', eventId: 'root:10', kind: 'system' as const, label: 'Initial Request Context', start: 110, end: 110, eventSeqs: [10] },
       { id: 'root:2', eventId: 'root:2', kind: 'reasoning' as const, label: 'reasoning', start: 120, end: 220, eventSeqs: [2] },
     ]
 
     const cells = adaptTrajectoryTurns(turns, items)[0]?.groups[1]?.cells
     expect(cells?.map(cell => [cell.kind, cell.label, cell.recordId])).toEqual([
-      ['system', 'Initial System Prompt', 'root:10'],
+      ['system', 'Initial Request Context', 'root:10'],
       ['reasoning', 'Reasoning', 'root:2'],
     ])
   })

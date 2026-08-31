@@ -100,8 +100,8 @@ describe('projectSession', () => {
     expect(model.execution[0]?.steps.map(step => step.promptEpochEventId)).toEqual([
       'prompted:3', 'prompted:6', 'prompted:9',
     ])
-    expect(model.timeline.filter(item => item.label.includes('System Prompt')).map(item => item.label)).toEqual([
-      'Initial System Prompt', 'System Prompt Resumed', 'System Prompt and Tools Updated',
+    expect(model.timeline.filter(item => item.kind === 'system').map(item => item.label)).toEqual([
+      'Initial Request Context', 'Request Context Resumed', 'System Prompt and Tools Updated',
     ])
   })
 

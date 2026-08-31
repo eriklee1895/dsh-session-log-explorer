@@ -14,7 +14,7 @@ function duration(value: number): string {
 }
 
 function promptPreview(epoch: PromptEpoch): string {
-  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return `Unchanged from prompt E${String(epoch.ordinal - 1).padStart(2, '0')}`
+  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return `Unchanged request context from E${String(epoch.ordinal - 1).padStart(2, '0')}`
   const prompt = preview(epoch.system)
   return prompt === '' ? `${epoch.toolNames.length} visible tools` : prompt
 }
@@ -42,7 +42,7 @@ export function adaptTrajectoryTurns(
   return turns.map((turn) => {
     const groups: TrajectoryTurn['groups'][number][] = []
     for (const epoch of turn.promptEpochs.filter(value => value.step === undefined)) {
-      groups.push({ title: 'Prompt epoch', step: null, cells: [cell(epoch.eventId, {
+      groups.push({ title: 'Request context', step: null, cells: [cell(epoch.eventId, {
         kind: 'system', label: promptEpochLabel(epoch), text: promptPreview(epoch),
       })] })
     }

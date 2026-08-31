@@ -10,8 +10,16 @@ function epochCode(ordinal: number): string {
 }
 
 function cardLabel(epoch: PromptEpoch): string {
-  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'SESSION RESUMED'
-  return promptEpochLabel(epoch).toUpperCase().replace(' AND ', ' + ')
+  if (epoch.reason === 'initial') return 'INITIAL REQUEST CONTEXT'
+  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'SESSION RESUMED · CONTEXT UNCHANGED'
+  const changed = new Set(epoch.changedFields)
+  if (changed.has('system') && changed.has('tools')) return 'SYSTEM PROMPT + TOOLS UPDATED'
+  if (changed.has('system') && changed.has('config')) return 'SYSTEM PROMPT + MODEL CONFIG UPDATED'
+  if (changed.has('system')) return 'SYSTEM PROMPT UPDATED'
+  if (changed.has('tools') && changed.has('config')) return 'MODEL CONFIG + TOOLS UPDATED · SYSTEM PROMPT UNCHANGED'
+  if (changed.has('tools')) return 'TOOLS UPDATED · SYSTEM PROMPT UNCHANGED'
+  if (changed.has('config')) return 'MODEL CONFIG UPDATED · SYSTEM PROMPT UNCHANGED'
+  return 'REQUEST CONTEXT UPDATED'
 }
 
 function modelName(epoch: PromptEpoch): string {
@@ -53,7 +61,7 @@ export function PromptEpochReview({ epochs, onEventSelect }: {
   }
   return <section aria-label="Prompt epochs" className="prompt-review">
     <header className="prompt-review-header">
-      <div><span>PROMPT EPOCHS</span><p>Model-visible instructions, configuration, and tool catalog in force for each request.</p></div>
+      <div><span>MODEL REQUEST CONTEXT</span><p>Snapshots of the model-visible system prompt, model configuration, and tools.</p></div>
       <strong>{counts.initial} INITIAL · {counts.resume} RESUME · {counts.update} UPDATE</strong>
     </header>
     <ol>{epochs.map((epoch) => {
@@ -63,7 +71,7 @@ export function PromptEpochReview({ epochs, onEventSelect }: {
         <summary>
           <span className="prompt-epoch-index">{epochCode(epoch.ordinal)}</span>
           <div className="prompt-epoch-title"><strong>{cardLabel(epoch)}</strong><p>{unchangedResume
-            ? `UNCHANGED FROM ${previous === undefined ? 'PREVIOUS EPOCH' : epochCode(previous.ordinal)}`
+            ? `SYSTEM PROMPT, MODEL, AND TOOLS UNCHANGED FROM ${previous === undefined ? 'THE PREVIOUS SNAPSHOT' : epochCode(previous.ordinal)}`
             : epoch.system.replaceAll(/\s+/g, ' ').trim().slice(0, 170) || 'No rendered system prompt'}</p></div>
           <div className="prompt-epoch-meta"><span>{modelName(epoch)}</span><span>{epoch.toolNames.length} {epoch.toolNames.length === 1 ? 'TOOL' : 'TOOLS'}</span></div>
         </summary>

@@ -133,8 +133,8 @@ function sameJson(left: unknown, right: unknown): boolean {
 }
 
 export function promptEpochLabel(epoch: PromptEpoch): string {
-  if (epoch.reason === 'initial') return 'Initial System Prompt'
-  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'System Prompt Resumed'
+  if (epoch.reason === 'initial') return 'Initial Request Context'
+  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'Request Context Resumed'
   const changed = new Set(epoch.changedFields)
   if (changed.has('system') && changed.has('tools')) return 'System Prompt and Tools Updated'
   if (changed.has('system')) return 'System Prompt Updated'

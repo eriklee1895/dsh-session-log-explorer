@@ -154,8 +154,8 @@ describe('ExplorerWorkspace', () => {
       ...session,
       promptEpochs: [initial, resumed, changed],
       timeline: [...session.timeline,
-        { id: 'root:10', eventId: 'root:10', kind: 'system' as const, label: 'Initial System Prompt', start: 12, end: 12, eventSeqs: [10] },
-        { id: 'root:11', eventId: 'root:11', kind: 'system' as const, label: 'System Prompt Resumed', start: 18, end: 18, eventSeqs: [11] },
+        { id: 'root:10', eventId: 'root:10', kind: 'system' as const, label: 'Initial Request Context', start: 12, end: 12, eventSeqs: [10] },
+        { id: 'root:11', eventId: 'root:11', kind: 'system' as const, label: 'Request Context Resumed', start: 18, end: 18, eventSeqs: [11] },
         { id: 'root:12', eventId: 'root:12', kind: 'system' as const, label: 'System Prompt and Tools Updated', start: 24, end: 24, eventSeqs: [12] },
       ],
       execution: [{
@@ -172,25 +172,25 @@ describe('ExplorerWorkspace', () => {
     />)
 
     const review = screen.getByRole('region', { name: 'Prompt epochs' })
-    expect(within(review).getByText('PROMPT EPOCHS')).toBeTruthy()
+    expect(within(review).getByText('MODEL REQUEST CONTEXT')).toBeTruthy()
     expect(within(review).getByText('1 INITIAL · 1 RESUME · 1 UPDATE')).toBeTruthy()
-    const initialCard = within(review).getByText('INITIAL SYSTEM PROMPT').closest('details')
-    const resumeCard = within(review).getByText('SESSION RESUMED').closest('details')
+    const initialCard = within(review).getByText('INITIAL REQUEST CONTEXT').closest('details')
+    const resumeCard = within(review).getByText('SESSION RESUMED · CONTEXT UNCHANGED').closest('details')
     const changeCard = within(review).getByText('SYSTEM PROMPT + TOOLS UPDATED').closest('details')
     expect(initialCard?.open).toBe(false)
-    expect(resumeCard?.textContent).toContain('UNCHANGED FROM E01')
+    expect(resumeCard?.textContent).toContain('SYSTEM PROMPT, MODEL, AND TOOLS UNCHANGED FROM E01')
     expect(resumeCard?.querySelector('pre')).toBeNull()
-    fireEvent.click(within(initialCard as HTMLElement).getByText('INITIAL SYSTEM PROMPT'))
+    fireEvent.click(within(initialCard as HTMLElement).getByText('INITIAL REQUEST CONTEXT'))
     expect(initialCard?.querySelector('.prompt-document pre')?.textContent).toContain('Follow repository instructions.')
     fireEvent.click(within(changeCard as HTMLElement).getByText('SYSTEM PROMPT + TOOLS UPDATED'))
     expect(changeCard?.querySelector('.prompt-document pre')?.textContent).toContain('Follow updated repository instructions.')
     fireEvent.click(within(initialCard as HTMLElement).getByRole('button', { name: 'View raw request header E01' }))
     expect(selected).toEqual(['root:10'])
-    expect(screen.getByText('PROMPT E01')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'View effective prompt E01' }))
+    expect(screen.getByText('CONTEXT E01')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'View effective context E01' }))
     expect(selected).toEqual(['root:10', 'root:10'])
     fireEvent.click(screen.getByRole('button', { name: '时间线' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Initial System Prompt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Initial Request Context' }))
     expect(selected).toEqual(['root:10', 'root:10', 'root:10'])
   })
 })
