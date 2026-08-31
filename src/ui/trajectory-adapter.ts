@@ -14,7 +14,7 @@ function duration(value: number): string {
 }
 
 function promptPreview(epoch: PromptEpoch): string {
-  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return `Unchanged request context from E${String(epoch.ordinal - 1).padStart(2, '0')}`
+  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return `Unchanged request context from EPOCH ${String(epoch.ordinal - 1).padStart(2, '0')}`
   const prompt = preview(epoch.system)
   return prompt === '' ? `${epoch.toolNames.length} visible tools` : prompt
 }

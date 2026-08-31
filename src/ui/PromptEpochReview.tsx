@@ -6,7 +6,11 @@ import { StructuredJson } from './StructuredJson.tsx'
 import './PromptEpochReview.css'
 
 function epochCode(ordinal: number): string {
-  return `E${String(ordinal).padStart(2, '0')}`
+  return `EPOCH ${String(ordinal).padStart(2, '0')}`
+}
+
+function epochReference(ordinal: number): string {
+  return `epoch ${String(ordinal).padStart(2, '0')}`
 }
 
 function cardLabel(epoch: PromptEpoch): string {
@@ -87,7 +91,7 @@ export function PromptEpochReview({ epochs, onEventSelect }: {
             <section><h3>MODEL CONFIG</h3><StructuredJson value={JSON.stringify(epoch.config)} empty="No model configuration was recorded." /></section>
             <details className="prompt-tools"><summary>TOOLS <span>{epoch.toolNames.length}</span></summary><ToolList current={epoch.toolNames} previous={previous?.toolNames ?? []} /></details>
           </aside>}
-          <button aria-label={`View raw request header ${epochCode(epoch.ordinal)}`} className="prompt-raw-event" onClick={() => { onEventSelect(epoch.eventId) }}>VIEW RAW REQUEST HEADER</button>
+          <button aria-label={`View raw request header ${epochReference(epoch.ordinal)}`} className="prompt-raw-event" onClick={() => { onEventSelect(epoch.eventId) }}>VIEW RAW REQUEST HEADER</button>
         </div>
       </details></li>
     })}</ol>

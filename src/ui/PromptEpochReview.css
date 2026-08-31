@@ -30,7 +30,7 @@
 .prompt-epoch[open] > summary::after { transform: rotate(90deg); }
 .prompt-epoch > summary:hover { background: #f8fafc; }
 .prompt-epoch > summary:focus-visible { outline-offset: -3px; }
-.prompt-epoch-index { align-items: center; background: #eeeafe; border: 1px solid #d3c9f5; border-radius: 5px; color: #5a42a2; display: inline-flex; font: 10px/1 var(--mono); font-weight: 700; height: 30px; justify-content: center; width: 40px; }
+.prompt-epoch-index { align-items: center; background: #eeeafe; border: 1px solid #d3c9f5; border-radius: 5px; color: #5a42a2; display: inline-flex; font: 10px/1 var(--mono); font-weight: 700; height: 30px; justify-content: center; min-width: 70px; padding-inline: 7px; }
 .prompt-epoch.resume .prompt-epoch-index { background: #eef3f7; border-color: #d4dde6; color: #5f6f82; }
 .prompt-epoch.change .prompt-epoch-index { background: #fff6e7; border-color: #ead5a8; color: #8b641d; }
 .prompt-epoch-title { display: grid; gap: 5px; min-width: 0; }
