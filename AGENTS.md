@@ -1,11 +1,32 @@
 # AGENTS.md
 
-## Commands
+## Project purpose
+
+This is an offline, browser-based learning and debugging tool for exported DeepSeek Harness session logs. It reconstructs recorded turns, steps, events, tool calls, responses, and timing without connecting to a running Agent.
+
+- Keep the raw record inspectable. Projections may group or summarize events, but must not invent a global causal order across independent subagent logs.
+- Session logs can contain prompts, paths, command arguments, tool output, and media. Preserve the local-only model: parsing happens in a browser Worker; do not add uploads, analytics, server persistence, or cloud synchronization unless the user explicitly asks for it.
+- The product deliberately does not restore a session after page refresh. Do not introduce browser storage as an incidental convenience feature.
+
+## Repository layout
+
+- `src/worker/` owns import, archive decoding, parser, and session-store logic. Keep parsing failures explicit and preserve enough raw data for the inspector.
+- `src/model/projection.ts` turns physical records into logical views. Update the related projection or parser tests when its semantics change.
+- `src/ui/` owns the execution view, trajectory, and structured JSON inspector. Preserve responsive layout and developer-oriented inspection behavior.
+- `tests/` contains Vitest coverage for import, parser, projection, workspace, structured JSON, and trajectory behavior.
+- `docs/screenshots/` contains README images. Update screenshots only when the documented product view materially changes.
+
+## Development and verification
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
 ```
+
+- Use strict TypeScript. Add or update a focused Vitest test for parser, projection, UI, or CLI behavior changes before changing production code.
+- Run `pnpm check` and `git diff --check` before committing. For user-visible UI changes, verify the built app in a browser at a representative desktop width and check for console errors.
+- Keep `README.md` and `README.zh.md` aligned when changing public setup, supported formats, privacy, or product behavior.
+- Preserve unrelated local changes. Never reset, discard, stage, or commit files outside the requested scope.
 
 ## npm releases
 

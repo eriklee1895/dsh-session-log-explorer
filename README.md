@@ -6,6 +6,16 @@ An offline, browser-based explorer for exported [DeepSeek Harness](https://githu
 
 > This is an independent, unofficial project. It is not affiliated with, endorsed by, or supported by DeepSeek.
 
+## Quick start
+
+Run the offline explorer without cloning the repository:
+
+```sh
+npx @eriklee1895/dsh-session-log-explorer
+```
+
+The command serves the included static files on `127.0.0.1` and opens the browser. Use `--no-open` for a headless terminal or `--port 4179` to pick a local port. If your npm default points to another registry, add `--registry=https://registry.npmjs.org` before the package name.
+
 ![Trajectory view: decisions, active work, waits, and tool calls](docs/screenshots/trajectory.png)
 
 ## What it helps you learn
@@ -47,7 +57,7 @@ Files are parsed in a browser Worker and remain in the current browser tab. The 
 
 The parser supports session format version `0` and expands packed text, reasoning, and tool-call chunk rows into logical events.
 
-## Run locally
+## Develop locally
 
 Requires Node.js 20+ and pnpm.
 
@@ -62,16 +72,6 @@ Open the local URL printed by Vite. For a production build and tests:
 pnpm build
 pnpm test
 ```
-
-## Run with npx
-
-Once installed from npm, start the offline explorer without cloning the repository:
-
-```sh
-npx @eriklee1895/dsh-session-log-explorer
-```
-
-The command serves the included static files on `127.0.0.1`, then opens the browser. Use `--no-open` for a headless terminal or `--port 4179` to pick a local port.
 
 ## Scope
 

@@ -6,6 +6,16 @@
 
 > 本项目独立开发，非 DeepSeek 官方项目，也不代表 DeepSeek 的认可或支持。
 
+## Quick Start
+
+无需克隆仓库，直接启动离线查看器：
+
+```sh
+npx @eriklee1895/dsh-session-log-explorer
+```
+
+命令只会在 `127.0.0.1` 提供随包附带的静态文件，然后打开浏览器。无图形终端可使用 `--no-open`，也可以用 `--port 4179` 指定本地端口；如果 npm 默认 registry 不是官方源，请在包名之前加入 `--registry=https://registry.npmjs.org`。
+
 ![轨迹视图：决策、活跃执行、等待和工具调用](docs/screenshots/trajectory.png)
 
 ## 它能帮助你学习什么
@@ -47,7 +57,7 @@
 
 解析器支持 session format version `0`，并会将打包的文本、推理和工具调用 chunk 行展开为逻辑事件。
 
-## 本地运行
+## 本地开发
 
 需要 Node.js 20+ 与 pnpm。
 
@@ -62,16 +72,6 @@ pnpm dev
 pnpm build
 pnpm test
 ```
-
-## 通过 npx 运行
-
-npm 发布后，无需克隆仓库即可启动离线浏览器工具：
-
-```sh
-npx @eriklee1895/dsh-session-log-explorer
-```
-
-命令只会在 `127.0.0.1` 提供随包附带的静态文件，然后打开浏览器。无图形终端可使用 `--no-open`，也可以用 `--port 4179` 指定本地端口。
 
 ## 范围
 
