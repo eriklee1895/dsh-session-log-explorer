@@ -1,6 +1,6 @@
 {
   "name": "@eriklee1895/dsh-session-log-explorer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "packageManager": "pnpm@11.24.0",
   "description": "An offline explorer for exported DeepSeek Harness session logs.",
