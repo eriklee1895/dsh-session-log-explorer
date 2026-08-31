@@ -1,6 +1,5 @@
 {
-  "name": "dsh-session-log-explorer",
-  "private": true,
+  "name": "@eriklee1895/dsh-session-log-explorer",
   "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@11.24.0",
@@ -14,12 +13,29 @@
     "url": "https://github.com/eriklee1895/dsh-session-log-explorer/issues"
   },
   "homepage": "https://github.com/eriklee1895/dsh-session-log-explorer#readme",
+  "bin": {
+    "dsh-session-log-explorer": "./bin/dsh-session-log-explorer.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "scripts",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "NOTICE.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
+    "prepack": "pnpm run build",
     "test": "vitest run --dir tests",
     "check": "pnpm run test && pnpm run build"
   },

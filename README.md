@@ -63,6 +63,16 @@ pnpm build
 pnpm test
 ```
 
+## Run with npx
+
+Once installed from npm, start the offline explorer without cloning the repository:
+
+```sh
+npx @eriklee1895/dsh-session-log-explorer
+```
+
+The command serves the included static files on `127.0.0.1`, then opens the browser. Use `--no-open` for a headless terminal or `--port 4179` to pick a local port.
+
 ## Scope
 
 The explorer is a local learning and debugging tool for exported logs. It does not connect to a running DSH Agent, mutate a session, provide a live tail, or merge independent subagent logs into a fabricated global causal sequence.
