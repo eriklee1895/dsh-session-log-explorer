@@ -1,0 +1,84 @@
+.prompt-review {
+  background: #fff;
+  border: 1px solid #cfdae7;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgb(30 50 80 / 4%);
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.prompt-review-header {
+  align-items: center;
+  background: #f5f8fc;
+  border-bottom: 1px solid #d8e1ec;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.prompt-review-header div { display: grid; gap: 5px; }
+.prompt-review-header span { color: #5b43a6; font: 11px/1 var(--mono); font-weight: 700; letter-spacing: .1em; }
+.prompt-review-header p { color: #65758a; font-size: 12px; margin: 0; }
+.prompt-review-header strong { color: #53657b; font: 9px/1 var(--mono); white-space: nowrap; }
+.prompt-review ol { display: grid; list-style: none; margin: 0; padding: 0; }
+.prompt-review li + li { border-top: 1px solid #e2e8f0; }
+.prompt-epoch { min-width: 0; }
+.prompt-epoch > summary { align-items: center; cursor: pointer; display: grid; gap: 12px; grid-template-columns: auto minmax(0, 1fr) auto auto; list-style: none; min-height: 62px; padding: 10px 16px; }
+.prompt-epoch > summary::-webkit-details-marker { display: none; }
+.prompt-epoch > summary::after { color: #67778b; content: '›'; font: 20px/1 var(--mono); grid-column: 4; transition: transform .16s ease; }
+.prompt-epoch[open] > summary::after { transform: rotate(90deg); }
+.prompt-epoch > summary:hover { background: #f8fafc; }
+.prompt-epoch > summary:focus-visible { outline-offset: -3px; }
+.prompt-epoch-index { align-items: center; background: #eeeafe; border: 1px solid #d3c9f5; border-radius: 5px; color: #5a42a2; display: inline-flex; font: 10px/1 var(--mono); font-weight: 700; height: 30px; justify-content: center; width: 40px; }
+.prompt-epoch.resume .prompt-epoch-index { background: #eef3f7; border-color: #d4dde6; color: #5f6f82; }
+.prompt-epoch.change .prompt-epoch-index { background: #fff6e7; border-color: #ead5a8; color: #8b641d; }
+.prompt-epoch-title { display: grid; gap: 5px; min-width: 0; }
+.prompt-epoch-title strong { color: #33445a; font: 10px/1 var(--mono); letter-spacing: .08em; }
+.prompt-epoch-title p { color: #6c7b8d; font: 11px/1.4 var(--mono); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-epoch.unchanged .prompt-epoch-title p { color: #74859a; letter-spacing: .05em; }
+.prompt-epoch-meta { align-items: flex-end; display: grid; gap: 5px; justify-items: end; }
+.prompt-epoch-meta span { color: #64748b; font: 9px/1 var(--mono); white-space: nowrap; }
+.prompt-epoch-body { background: #fbfcfe; border-top: 1px solid #e2e8f0; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); padding: 14px 16px 16px; }
+.prompt-document { background: #fff; border: 1px solid #d8e1ec; border-radius: 7px; min-width: 0; overflow: hidden; }
+.prompt-document header { align-items: center; background: #f6f8fb; border-bottom: 1px solid #e1e7ef; display: flex; justify-content: space-between; padding: 9px 11px; }
+.prompt-document h3, .prompt-epoch-aside h3 { color: #586a80; font: 9px/1 var(--mono); letter-spacing: .08em; margin: 0; }
+.prompt-document header small { color: #8290a1; font: 8px/1 var(--mono); }
+.prompt-document pre { color: #1f2d40; font: 12px/1.65 var(--mono); margin: 0; max-height: min(54vh, 620px); overflow: auto; padding: 14px; white-space: pre-wrap; }
+.prompt-diff { display: block; }
+.prompt-diff span { display: block; margin-inline: -14px; padding-inline: 14px; white-space: pre-wrap; }
+.prompt-diff .added { background: #e8f7ed; color: #17683b; }
+.prompt-diff .removed { background: #fff0ee; color: #a43f35; text-decoration: line-through; text-decoration-color: rgb(164 63 53 / 40%); }
+.prompt-diff .unchanged { color: #536174; }
+.prompt-epoch-aside { align-content: start; display: grid; gap: 10px; min-width: 0; }
+.prompt-epoch-aside > section { display: grid; gap: 7px; }
+.prompt-epoch-aside .structured-json { max-height: 190px; }
+.prompt-tools { background: #fff; border: 1px solid #d8e1ec; border-radius: 7px; overflow: hidden; }
+.prompt-tools > summary { align-items: center; color: #586a80; cursor: pointer; display: flex; font: 9px/1 var(--mono); justify-content: space-between; letter-spacing: .08em; list-style: none; padding: 10px; }
+.prompt-tools > summary::-webkit-details-marker { display: none; }
+.prompt-tools > summary::before { color: #718096; content: '›'; font-size: 15px; margin-right: 7px; transition: transform .16s ease; }
+.prompt-tools[open] > summary::before { transform: rotate(90deg); }
+.prompt-tools > summary span { margin-left: auto; }
+.prompt-tool-list { border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; max-height: 220px; overflow: auto; padding: 10px; }
+.prompt-tool-list li { background: #edf7f0; border: 1px solid #c7dfcd; border-radius: 4px; color: #287348; font: 9px/1 var(--mono); padding: 5px 6px; }
+.prompt-tool-list li.added { background: #e8f7ed; border-color: #78c28e; box-shadow: inset 2px 0 #2d9a57; }
+.prompt-tool-list li.removed { background: #fff0ee; border-color: #e7b9b2; color: #a43f35; text-decoration: line-through; }
+.prompt-resume-note { background: #f1f5f9; border: 1px solid #d8e1ea; border-radius: 7px; color: #58697d; font: 11px/1.6 var(--mono); grid-column: 1 / -1; margin: 0; padding: 12px; }
+.prompt-raw-event { align-self: start; background: #fff; border: 1px solid #c8d6e7; border-radius: 5px; color: #39536e; font: 9px/1 var(--mono); grid-column: 1 / -1; justify-self: start; min-height: 30px; padding: 0 9px; }
+.prompt-raw-event:hover, .prompt-raw-event:focus-visible { background: #5b43a6; border-color: #5b43a6; color: #fff; }
+
+@container (max-width: 760px) {
+  .prompt-review-header { align-items: flex-start; flex-direction: column; gap: 9px; }
+  .prompt-epoch > summary { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .prompt-epoch-index { grid-row: 1 / span 2; }
+  .prompt-epoch-title { grid-column: 2; grid-row: 1; }
+  .prompt-epoch-meta { display: flex; gap: 10px; grid-column: 2; grid-row: 2; justify-items: start; }
+  .prompt-epoch-meta span { white-space: nowrap; }
+  .prompt-epoch > summary::after { grid-column: 3; grid-row: 1 / span 2; }
+  .prompt-epoch-body { grid-template-columns: minmax(0, 1fr); }
+  .prompt-epoch > summary { min-height: 76px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-epoch > summary::after, .prompt-tools > summary::before { transition: none; }
+}

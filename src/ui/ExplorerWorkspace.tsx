@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import type { ConversationRecord, ExecutionTurn, TimelineItem } from '../model/projection.ts'
+import type { ConversationRecord, ExecutionTurn, PromptEpoch, TimelineItem } from '../model/projection.ts'
 import type { ExplorerSessionView } from '../worker/session-store.ts'
 import {
   AgentTrajectory,
@@ -9,6 +9,7 @@ import {
   type TrajectoryRange,
 } from './AgentTrajectory.tsx'
 import { StructuredJson } from './StructuredJson.tsx'
+import { PromptEpochReview } from './PromptEpochReview.tsx'
 import { adaptTrajectoryTurns } from './trajectory-adapter.ts'
 import './ExplorerWorkspace.css'
 
@@ -189,13 +190,30 @@ function preview(content: string, limit = 220): string {
   return normalized.length <= limit ? normalized : `${normalized.slice(0, limit)}…`
 }
 
-function Execution({ turns, onEventSelect }: {
+function StepPromptContext({ epoch, onEventSelect }: {
+  readonly epoch: PromptEpoch | undefined
+  readonly onEventSelect: (eventId: string) => void
+}): React.JSX.Element | null {
+  if (epoch === undefined) return null
+  const code = `E${String(epoch.ordinal).padStart(2, '0')}`
+  return <div className="step-prompt-context">
+    <span>PROMPT {code}</span>
+    <strong>{typeof epoch.config.model === 'string' ? epoch.config.model : 'model not recorded'}</strong>
+    <small>{epoch.toolNames.length} {epoch.toolNames.length === 1 ? 'TOOL' : 'TOOLS'}</small>
+    <button aria-label={`View effective prompt ${code}`} onClick={() => { onEventSelect(epoch.eventId) }}>VIEW EFFECTIVE PROMPT</button>
+  </div>
+}
+
+function Execution({ epochs, turns, onEventSelect }: {
+  readonly epochs: readonly PromptEpoch[]
   readonly turns: readonly ExecutionTurn[]
   readonly onEventSelect: (eventId: string) => void
 }): React.JSX.Element {
   const stepCount = turns.reduce((count, turn) => count + turn.steps.length, 0)
+  const epochById = new Map(epochs.map(epoch => [epoch.eventId, epoch] as const))
   return <section className="execution" aria-label="执行叙事">
     <header className="execution-intro"><span>EXECUTION REVIEW</span><p>{turns.length} turns · {stepCount} steps · reconstructed from recorded agent decisions</p></header>
+    <PromptEpochReview epochs={epochs} onEventSelect={onEventSelect} />
     {turns.map((turn, turnIndex) => <details className="execution-turn" key={turn.id} open={turnIndex === 0}>
       <summary><span>TURN {String(turn.turn).padStart(2, '0')}</span><small>{turn.steps.length} STEPS</small></summary>
       {turn.prompt !== undefined && <details className="turn-prompt">
@@ -209,6 +227,7 @@ function Execution({ turns, onEventSelect }: {
         <details className="execution-step" open={turnIndex === 0 && stepIndex === 0}>
           <summary><span>STEP {String(step.step).padStart(2, '0')}</span>{step.tools.length > 0 && <em className="step-tool-trail">{step.tools.map(tool => tool.name).join(' → ')}</em>}<small>{step.eventCount.toLocaleString('en-US')} RECORDS · {step.tools.length} TOOLS</small></summary>
           <div className="step-body">
+            <StepPromptContext epoch={step.promptEpochEventId === undefined ? undefined : epochById.get(step.promptEpochEventId)} onEventSelect={onEventSelect} />
             {step.reasoning !== '' && <details className="step-block reasoning">
               <summary><span>REASONING</span><p>{preview(step.reasoning)}</p></summary>
               <div className="detail-body"><p>{step.reasoning}</p>{step.reasoningEventId !== undefined && <button onClick={() => {
@@ -251,7 +270,7 @@ export function ExplorerWorkspace({
       <nav aria-label="工作台视图">{(Object.keys(labels) as WorkspaceView[]).map(key => <button key={key} aria-pressed={view === key} onClick={() => { setView(key) }}>{labels[key]}</button>)}</nav>
     </header>
     {view === 'overview' && <Overview session={session} />}
-    {view === 'execution' && <Execution turns={session.execution} onEventSelect={onEventSelect} />}
+    {view === 'execution' && <Execution epochs={session.promptEpochs} turns={session.execution} onEventSelect={onEventSelect} />}
     {view === 'timeline' && <Timeline items={session.timeline} onEventSelect={onEventSelect} selectedEventId={selectedEventId} turns={session.execution} />}
     {view === 'conversation' && <Conversation records={conversation} selectedEventId={selectedEventId} onEventSelect={onEventSelect} />}
   </section>

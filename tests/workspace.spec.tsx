@@ -8,10 +8,12 @@ const session = {
   sourcePath: 'session.jsonl',
   eventCount: 4,
   summary: { turns: 1, steps: 1, toolCalls: 1, toolResults: 1, errors: 0, durationMs: 100, tokens: {} },
+  promptEpochs: [],
   execution: [{
-    id: 'root:turn:1', turn: 1, start: 10, end: 30, prompt: { eventId: 'root:1', content: 'show me the worktree' }, steps: [{
+    id: 'root:turn:1', turn: 1, start: 10, end: 30, prompt: { eventId: 'root:1', content: 'show me the worktree' }, promptEpochs: [], steps: [{
       id: 'root:step:1:1', eventId: 'root:2', turn: 1, step: 1, start: 20, end: 30, eventCount: 2, errors: 0,
       reasoning: 'inspect repository', reasoningEventId: 'root:2', assistant: 'done', assistantEventId: 'root:2',
+      promptEpochEventId: undefined,
       tools: [
         { eventId: 'root:2', name: 'bash', input: '{"command":"pwd"}', output: '{"path":"/workspace"}', failed: false },
         { eventId: 'root:3', name: 'glob', input: '{"pattern":"*.ts"}', output: '{"matches":[]}', failed: false },
@@ -81,11 +83,11 @@ describe('ExplorerWorkspace', () => {
       summary: { ...session.summary, turns: 2, steps: 2 },
       execution: [...session.execution, {
         id: 'root:turn:2', turn: 2, start: 100, end: 130,
-        prompt: { eventId: 'root:4', content: 'verify the tests' },
+        prompt: { eventId: 'root:4', content: 'verify the tests' }, promptEpochs: [],
         steps: [{
           id: 'root:step:2:1', eventId: 'root:5', turn: 2, step: 1, start: 110, end: 130,
           eventCount: 3, errors: 0, reasoning: 'run focused checks', reasoningEventId: 'root:5',
-          assistant: 'all green', assistantEventId: 'root:6', tools: [],
+          assistant: 'all green', assistantEventId: 'root:6', promptEpochEventId: undefined, tools: [],
         }],
       }],
       timeline: [...session.timeline,
@@ -128,5 +130,67 @@ describe('ExplorerWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: '对话' }))
     expect(screen.getByText('show me the worktree')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '脱敏' })).toBeNull()
+  })
+
+  it('presents prompt epochs without repeating unchanged resume snapshots', () => {
+    const selected: string[] = []
+    const initial = {
+      ordinal: 1, eventId: 'root:10', previousEventId: undefined, reason: 'initial' as const,
+      turn: 1, step: 1, time: 12, config: { provider: 'deepseek', model: 'deepseek-chat' },
+      system: 'You are DSH.\n\nFollow repository instructions.',
+      tools: [{ name: 'bash', description: 'Run a command' }], toolNames: ['bash'], changedFields: [],
+    }
+    const resumed = {
+      ...initial, ordinal: 2, eventId: 'root:11', previousEventId: 'root:10', reason: 'resume' as const,
+      step: 2, time: 18,
+    }
+    const changed = {
+      ...initial, ordinal: 3, eventId: 'root:12', previousEventId: 'root:11', reason: 'change' as const,
+      step: 3, time: 24, system: 'You are DSH.\n\nFollow updated repository instructions.',
+      tools: [...initial.tools, { name: 'read', description: 'Read a file' }], toolNames: ['bash', 'read'],
+      changedFields: ['system', 'tools'] as const,
+    }
+    const promptSession = {
+      ...session,
+      promptEpochs: [initial, resumed, changed],
+      timeline: [...session.timeline,
+        { id: 'root:10', eventId: 'root:10', kind: 'system' as const, label: 'Initial System Prompt', start: 12, end: 12, eventSeqs: [10] },
+        { id: 'root:11', eventId: 'root:11', kind: 'system' as const, label: 'System Prompt Resumed', start: 18, end: 18, eventSeqs: [11] },
+        { id: 'root:12', eventId: 'root:12', kind: 'system' as const, label: 'System Prompt and Tools Updated', start: 24, end: 24, eventSeqs: [12] },
+      ],
+      execution: [{
+        ...session.execution[0], promptEpochs: [initial, resumed, changed],
+        steps: [{ ...session.execution[0].steps[0], promptEpochEventId: 'root:10' }],
+      }],
+    }
+
+    render(<ExplorerWorkspace
+      session={promptSession}
+      conversation={[]}
+      selectedEventId={undefined}
+      onEventSelect={(eventId) => { selected.push(eventId) }}
+    />)
+
+    const review = screen.getByRole('region', { name: 'Prompt epochs' })
+    expect(within(review).getByText('PROMPT EPOCHS')).toBeTruthy()
+    expect(within(review).getByText('1 INITIAL · 1 RESUME · 1 UPDATE')).toBeTruthy()
+    const initialCard = within(review).getByText('INITIAL SYSTEM PROMPT').closest('details')
+    const resumeCard = within(review).getByText('SESSION RESUMED').closest('details')
+    const changeCard = within(review).getByText('SYSTEM PROMPT + TOOLS UPDATED').closest('details')
+    expect(initialCard?.open).toBe(false)
+    expect(resumeCard?.textContent).toContain('UNCHANGED FROM E01')
+    expect(resumeCard?.querySelector('pre')).toBeNull()
+    fireEvent.click(within(initialCard as HTMLElement).getByText('INITIAL SYSTEM PROMPT'))
+    expect(initialCard?.querySelector('.prompt-document pre')?.textContent).toContain('Follow repository instructions.')
+    fireEvent.click(within(changeCard as HTMLElement).getByText('SYSTEM PROMPT + TOOLS UPDATED'))
+    expect(changeCard?.querySelector('.prompt-document pre')?.textContent).toContain('Follow updated repository instructions.')
+    fireEvent.click(within(initialCard as HTMLElement).getByRole('button', { name: 'View raw request header E01' }))
+    expect(selected).toEqual(['root:10'])
+    expect(screen.getByText('PROMPT E01')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'View effective prompt E01' }))
+    expect(selected).toEqual(['root:10', 'root:10'])
+    fireEvent.click(screen.getByRole('button', { name: '时间线' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Initial System Prompt' }))
+    expect(selected).toEqual(['root:10', 'root:10', 'root:10'])
   })
 })

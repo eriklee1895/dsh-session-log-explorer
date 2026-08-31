@@ -1,4 +1,4 @@
-import { projectSession, type ConversationRecord, type ExecutionTurn, type SessionSummary, type TimelineItem } from '../model/projection.ts'
+import { projectSession, type ConversationRecord, type ExecutionTurn, type PromptEpoch, type SessionSummary, type TimelineItem } from '../model/projection.ts'
 import type { ExplorerEvent } from './parser.ts'
 import { importDshArchive, importDshDirectory, importDshFile, type DshArchiveInput, type DshDirectoryEntry, type ImportedDshArchive } from './importer.ts'
 
@@ -10,6 +10,7 @@ export interface ExplorerSessionView {
   readonly summary: SessionSummary
   readonly timeline: readonly TimelineItem[]
   readonly execution: readonly ExecutionTurn[]
+  readonly promptEpochs: readonly PromptEpoch[]
 }
 
 export interface ExplorerImportView {
@@ -88,6 +89,7 @@ export class ExplorerSessionStore {
         summary: projection.summary,
         timeline: projection.timeline,
         execution: projection.execution,
+        promptEpochs: projection.promptEpochs,
       }
     })
     const mediaNames = [...archive.media.keys()].sort()

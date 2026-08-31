@@ -51,7 +51,25 @@ export interface ExecutionStep {
   readonly reasoningEventId: string | undefined
   readonly assistant: string
   readonly assistantEventId: string | undefined
+  readonly promptEpochEventId: string | undefined
   readonly tools: readonly ExecutionTool[]
+}
+
+export type PromptEpochField = 'config' | 'system' | 'tools'
+
+export interface PromptEpoch {
+  readonly ordinal: number
+  readonly eventId: string
+  readonly previousEventId: string | undefined
+  readonly reason: 'initial' | 'resume' | 'change'
+  readonly turn: number | undefined
+  readonly step: number | undefined
+  readonly time: number
+  readonly config: Readonly<Record<string, unknown>>
+  readonly system: string
+  readonly tools: readonly unknown[]
+  readonly toolNames: readonly string[]
+  readonly changedFields: readonly PromptEpochField[]
 }
 
 export interface ExecutionTurn {
@@ -60,6 +78,7 @@ export interface ExecutionTurn {
   readonly start: number
   readonly end: number
   readonly prompt: { readonly eventId: string; readonly content: string } | undefined
+  readonly promptEpochs: readonly PromptEpoch[]
   readonly steps: readonly ExecutionStep[]
 }
 
@@ -68,6 +87,7 @@ export interface SessionProjection {
   readonly timeline: readonly TimelineItem[]
   readonly conversation: readonly ConversationRecord[]
   readonly execution: readonly ExecutionTurn[]
+  readonly promptEpochs: readonly PromptEpoch[]
   readonly events: ReadonlyMap<string, ExplorerEvent>
 }
 
@@ -108,10 +128,26 @@ function positionOf(event: ExplorerEvent): string {
   return `${String(turn)}:${String(step)}`
 }
 
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+export function promptEpochLabel(epoch: PromptEpoch): string {
+  if (epoch.reason === 'initial') return 'Initial System Prompt'
+  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'System Prompt Resumed'
+  const changed = new Set(epoch.changedFields)
+  if (changed.has('system') && changed.has('tools')) return 'System Prompt and Tools Updated'
+  if (changed.has('system')) return 'System Prompt Updated'
+  if (changed.has('tools')) return 'Tools Updated'
+  if (changed.has('config')) return 'Model Configuration Updated'
+  return 'Request Header Updated'
+}
+
 /** Project a decoded session into the compact records used by every Explorer view. */
 export function projectSession(session: ParsedSessionJsonl): SessionProjection {
   const timeline: TimelineItem[] = []
   const conversation: ConversationRecord[] = []
+  const promptEpochs: PromptEpoch[] = []
   const events = new Map<string, ExplorerEvent>()
   const reasoning = new Map<string, { item: TimelineItem; record: ConversationRecord }>()
   const pendingCalls = new Map<string, { readonly event: ExplorerEvent; readonly step: ExecutionStepBuilder | undefined }[]>()
@@ -126,6 +162,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
   let firstTime: number | undefined
   let lastTime: number | undefined
   let activeTurn: number | undefined
+  let activeStep: ExecutionStepBuilder | undefined
+  let currentPromptEpoch: PromptEpoch | undefined
 
   const ensureTurn = (turn: number, time: number): ExecutionTurnBuilder => {
     const existing = turnsByNumber.get(turn)
@@ -134,7 +172,10 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       existing.end = Math.max(existing.end, time)
       return existing
     }
-    const builder: ExecutionTurnBuilder = { id: `${session.header.id}:turn:${String(turn)}`, turn, start: time, end: time, prompt: undefined, steps: [] }
+    const builder: ExecutionTurnBuilder = {
+      id: `${session.header.id}:turn:${String(turn)}`, turn, start: time, end: time,
+      prompt: undefined, promptEpochs: [], steps: [],
+    }
     turnsByNumber.set(turn, builder)
     return builder
   }
@@ -163,6 +204,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       errors: 0,
       reasoningEventId: undefined,
       assistantEventId: undefined,
+      promptEpochEventId: currentPromptEpoch?.eventId,
       reasoningParts: [],
       assistantParts: [],
       tools: [],
@@ -188,8 +230,52 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     }
     if (event.type === 'step/start') steps++
     const step = ensureStep(event, id)
+    if (event.type === 'step/start' && step !== undefined) activeStep = step
     const turn = dataIndex(event.data, 'turn') ?? activeTurn
     if (turn !== undefined) ensureTurn(turn, event.time)
+
+    if (event.type === 'request/header') {
+      const header = recordOf(event.data.header) ?? {}
+      const config = recordOf(header.config) ?? {}
+      const tools = Array.isArray(header.tools) ? header.tools : []
+      const system = typeof header.system === 'string' ? header.system : ''
+      const reason = event.data.reason === 'initial' || event.data.reason === 'resume' || event.data.reason === 'change'
+        ? event.data.reason
+        : 'change'
+      const changedFields: PromptEpochField[] = []
+      if (currentPromptEpoch !== undefined) {
+        if (!sameJson(currentPromptEpoch.config, config)) changedFields.push('config')
+        if (currentPromptEpoch.system !== system) changedFields.push('system')
+        if (!sameJson(currentPromptEpoch.tools, tools)) changedFields.push('tools')
+      }
+      const epoch: PromptEpoch = {
+        ordinal: promptEpochs.length + 1,
+        eventId: id,
+        previousEventId: currentPromptEpoch?.eventId,
+        reason,
+        turn: activeStep?.turn ?? turn,
+        step: activeStep?.step,
+        time: event.time,
+        config,
+        system,
+        tools,
+        toolNames: tools.flatMap((tool) => {
+          const name = recordOf(tool)?.name
+          return typeof name === 'string' ? [name] : []
+        }),
+        changedFields,
+      }
+      promptEpochs.push(epoch)
+      currentPromptEpoch = epoch
+      if (activeStep !== undefined) activeStep.promptEpochEventId = id
+      const epochTurn = epoch.turn === undefined ? undefined : ensureTurn(epoch.turn, event.time)
+      if (epochTurn !== undefined) epochTurn.promptEpochs.push(epoch)
+      append({
+        id, eventId: id, kind: 'system', label: promptEpochLabel(epoch), start: event.time, end: event.time,
+        eventSeqs: [event.seq],
+      })
+      continue
+    }
 
     if (event.type === 'user/message') {
       const content = textOf(event.data.content)
@@ -285,6 +371,10 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
         eventId: id, kind: 'system', label: event.type, content: JSON.stringify(event.data), eventSeqs: [event.seq],
       })
     }
+    const endedStep = activeStep
+    if (event.type === 'step/end' && endedStep !== undefined
+      && endedStep.turn === dataIndex(event.data, 'turn')
+      && endedStep.step === dataIndex(event.data, 'step')) activeStep = undefined
   }
   const execution = [...turnsByNumber.values()].sort((a, b) => a.turn - b.turn).map(turn => ({
     id: turn.id,
@@ -292,6 +382,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     start: turn.start,
     end: turn.end,
     prompt: turn.prompt,
+    promptEpochs: turn.promptEpochs,
     steps: turn.steps.sort((a, b) => a.step - b.step).map(step => ({
       id: step.id,
       eventId: step.eventId,
@@ -305,6 +396,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       reasoningEventId: step.reasoningEventId,
       assistant: step.assistantParts.join('\n'),
       assistantEventId: step.assistantEventId,
+      promptEpochEventId: step.promptEpochEventId,
       tools: step.tools,
     })),
   }))
@@ -317,6 +409,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     timeline: timeline.sort((a, b) => a.start - b.start || (a.eventSeqs[0] ?? 0) - (b.eventSeqs[0] ?? 0)),
     conversation,
     execution,
+    promptEpochs,
     events,
   }
 }
@@ -332,6 +425,7 @@ interface ExecutionStepBuilder {
   errors: number
   reasoningEventId: string | undefined
   assistantEventId: string | undefined
+  promptEpochEventId: string | undefined
   readonly reasoningParts: string[]
   readonly assistantParts: string[]
   readonly tools: ExecutionTool[]
@@ -343,5 +437,6 @@ interface ExecutionTurnBuilder {
   start: number
   end: number
   prompt: { readonly eventId: string; readonly content: string } | undefined
+  readonly promptEpochs: PromptEpoch[]
   readonly steps: ExecutionStepBuilder[]
 }

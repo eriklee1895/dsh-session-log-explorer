@@ -1,4 +1,4 @@
-import type { ExecutionTurn, TimelineItem } from '../model/projection.ts'
+import { promptEpochLabel, type ExecutionTurn, type PromptEpoch, type TimelineItem } from '../model/projection.ts'
 import type { TrajectoryCell, TrajectoryTurn } from './AgentTrajectory.tsx'
 
 function preview(value: string, limit = 180): string {
@@ -11,6 +11,12 @@ function duration(value: number): string {
   if (milliseconds < 1_000) return `${String(milliseconds)}ms`
   if (milliseconds < 60_000) return `${(milliseconds / 1_000).toFixed(milliseconds < 10_000 ? 1 : 0)}s`
   return `${(milliseconds / 60_000).toFixed(1)}m`
+}
+
+function promptPreview(epoch: PromptEpoch): string {
+  if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return `Unchanged from prompt E${String(epoch.ordinal - 1).padStart(2, '0')}`
+  const prompt = preview(epoch.system)
+  return prompt === '' ? `${epoch.toolNames.length} visible tools` : prompt
 }
 
 /** Adapt decoded offline records to the explorer's trajectory model. */
@@ -35,6 +41,11 @@ export function adaptTrajectoryTurns(
   }
   return turns.map((turn) => {
     const groups: TrajectoryTurn['groups'][number][] = []
+    for (const epoch of turn.promptEpochs.filter(value => value.step === undefined)) {
+      groups.push({ title: 'Prompt epoch', step: null, cells: [cell(epoch.eventId, {
+        kind: 'system', label: promptEpochLabel(epoch), text: promptPreview(epoch),
+      })] })
+    }
     if (turn.prompt !== undefined) {
       groups.push({ title: 'User prompt', step: null, cells: [cell(turn.prompt.eventId, {
         kind: 'user', label: 'User', text: preview(turn.prompt.content),
@@ -42,6 +53,9 @@ export function adaptTrajectoryTurns(
     }
     for (const step of turn.steps) {
       const cells: TrajectoryCell[] = []
+      for (const epoch of turn.promptEpochs.filter(value => value.step === step.step)) cells.push(cell(epoch.eventId, {
+        kind: 'system', label: promptEpochLabel(epoch), text: promptPreview(epoch),
+      }))
       if (step.reasoning !== '' && step.reasoningEventId !== undefined) cells.push(cell(step.reasoningEventId, {
         kind: 'reasoning', label: 'Reasoning', text: preview(step.reasoning),
       }))

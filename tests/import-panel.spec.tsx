@@ -52,7 +52,7 @@ describe('import panel', () => {
     const session = {
       id: 'root', sourcePath: 'session.jsonl', eventCount: 1,
       summary: { turns: 1, steps: 1, toolCalls: 1, toolResults: 0, errors: 0, durationMs: 0, tokens: {} },
-      timeline: [], execution: [],
+      timeline: [], execution: [], promptEpochs: [],
     }
     act(() => { worker.onmessage?.({ data: { type: 'ready', view: { rootSessionId: 'root', sessions: [session], mediaNames: [], missingMediaNames: [] } } } as MessageEvent) })
     act(() => { worker.onmessage?.({ data: { type: 'event', eventId: 'root:0', event: {
