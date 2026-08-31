@@ -1,0 +1,384 @@
+.agent-trajectory {
+  background: #f8fafc;
+  border-bottom: 1px solid #d7e0ea;
+  color: #233249;
+  container-type: inline-size;
+  min-width: 0;
+  user-select: none;
+}
+
+.agent-trajectory-header {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  min-height: 52px;
+  padding: 8px 12px;
+}
+
+.agent-trajectory-heading {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.agent-trajectory-heading strong {
+  color: #1e65d6;
+  font: 10px/1 var(--mono);
+  letter-spacing: .12em;
+}
+
+.agent-trajectory-heading span {
+  color: #63748a;
+  font: 10px/1.25 var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-trajectory-modes {
+  background: #f3f6fa;
+  border: 1px solid #d5deea;
+  border-radius: 6px;
+  display: flex;
+  min-width: max-content;
+  overflow: hidden;
+}
+
+.agent-trajectory-modes button,
+.agent-trajectory-zoom button {
+  background: transparent;
+  border: 0;
+  color: #53657b;
+  font: 10px/1 var(--mono);
+  min-height: 30px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.agent-trajectory-modes button + button {
+  border-left: 1px solid #d5deea;
+}
+
+.agent-trajectory-modes button:hover,
+.agent-trajectory-modes button:focus-visible,
+.agent-trajectory-zoom button:hover,
+.agent-trajectory-zoom button:focus-visible {
+  background: #eaf2ff;
+  color: #1e65d6;
+  outline: none;
+}
+
+.agent-trajectory-modes button[aria-pressed='true'] {
+  background: #2563eb;
+  color: #fff;
+}
+
+.agent-trajectory-zoom {
+  border: 1px solid #d5deea;
+  border-radius: 6px;
+  display: flex;
+  overflow: hidden;
+}
+
+.agent-trajectory-zoom button {
+  min-width: 32px;
+  padding: 0 8px;
+}
+
+.agent-trajectory-zoom button + button {
+  border-left: 1px solid #d5deea;
+}
+
+.agent-trajectory-zoom button:disabled {
+  color: #a9b4c1;
+  cursor: default;
+}
+
+.agent-trajectory-plot {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  padding: 10px 12px 8px;
+}
+
+.agent-trajectory-lanes {
+  border-right: 1px solid #dbe3ed;
+  color: #718197;
+  display: grid;
+  font: 9px/1 var(--mono);
+  grid-template-rows: repeat(3, 30px);
+  margin-top: 34px;
+  padding-right: 9px;
+}
+
+.agent-trajectory-lanes span {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-trajectory-chart {
+  min-width: 0;
+}
+
+.agent-trajectory-ruler {
+  height: 34px;
+  position: relative;
+}
+
+.agent-trajectory-ruler ol {
+  inset: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+}
+
+.agent-trajectory-ruler li {
+  bottom: 2px;
+  color: #7b899b;
+  font: 9px/1 var(--mono);
+  left: var(--left);
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.agent-trajectory-ruler li:first-child {
+  transform: none;
+}
+
+.agent-trajectory-ruler li:last-child {
+  transform: translateX(-100%);
+}
+
+.agent-trajectory-turn {
+  background: #e8f1ff;
+  border: 1px solid #b7d0f5;
+  border-radius: 3px;
+  color: #175fc5;
+  font: 8px/1 var(--mono);
+  left: var(--left);
+  min-height: 17px;
+  padding: 0 4px;
+  position: absolute;
+  top: 0;
+  transform: translateX(2px);
+  z-index: 4;
+}
+
+.agent-trajectory-turn:hover,
+.agent-trajectory-turn:focus-visible {
+  background: #2563eb;
+  color: #fff;
+  outline: none;
+}
+
+.agent-trajectory-track {
+  background: #fff;
+  border: 1px solid #dbe3ed;
+  cursor: crosshair;
+  height: 90px;
+  outline: none;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+.agent-trajectory-track:focus-visible {
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 35%);
+}
+
+.agent-trajectory-grid {
+  background: #e6ebf1;
+  bottom: 0;
+  left: var(--left);
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 1px;
+  z-index: 1;
+}
+
+.agent-trajectory-turn-band {
+  bottom: 0;
+  left: var(--left);
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: var(--width);
+}
+
+.agent-trajectory-turn-band.band-1 {
+  background: rgb(231 238 247 / 28%);
+}
+
+.agent-trajectory-span {
+  background: #718096;
+  border: 0;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(18 35 56 / 15%);
+  height: 18px;
+  left: var(--left);
+  min-width: 3px;
+  opacity: .92;
+  padding: 0;
+  position: absolute;
+  top: calc(6px + var(--lane) * 30px);
+  width: max(3px, var(--width));
+  z-index: 2;
+}
+
+.agent-trajectory-span.user,
+.agent-trajectory-span.system {
+  background: #5f8fb6;
+}
+
+.agent-trajectory-span.reasoning {
+  background: #8c76c3;
+}
+
+.agent-trajectory-span.assistant {
+  background: #3f75a4;
+}
+
+.agent-trajectory-span.tool {
+  background: #50a06a;
+}
+
+.agent-trajectory-span.error {
+  background: #cf5b4c;
+}
+
+.agent-trajectory-span:hover,
+.agent-trajectory-span:focus-visible,
+.agent-trajectory-span.current {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2563eb;
+  opacity: 1;
+  outline: none;
+  z-index: 5;
+}
+
+.agent-trajectory-span.dim {
+  opacity: .12;
+}
+
+.agent-trajectory-selection {
+  background: rgb(37 99 235 / 9%);
+  border-left: 1px solid #2563eb;
+  border-right: 1px solid #2563eb;
+  bottom: 0;
+  left: var(--left);
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: max(1px, var(--width));
+  z-index: 3;
+}
+
+.agent-trajectory-footer {
+  align-items: center;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 12px;
+}
+
+.agent-trajectory-footer > span {
+  align-items: baseline;
+  color: #68798e;
+  display: flex;
+  font: 10px/1.3 var(--mono);
+  gap: 9px;
+  min-width: 0;
+}
+
+.agent-trajectory-footer b {
+  color: #255f9d;
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.agent-trajectory-footer em {
+  color: #45566b;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-trajectory-footer small {
+  color: #60738a;
+  flex: 0 0 auto;
+  font: 9px/1 var(--mono);
+}
+
+.agent-trajectory-empty {
+  color: #78889b;
+  font: 10px/72px var(--mono);
+  height: 72px;
+  text-align: center;
+}
+
+@container (max-width: 680px) {
+  .agent-trajectory-header {
+    gap: 8px 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .agent-trajectory-heading {
+    grid-column: 1 / -1;
+  }
+
+  .agent-trajectory-modes {
+    justify-self: start;
+  }
+}
+
+@container (max-width: 420px) {
+  .agent-trajectory-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-trajectory-modes {
+    justify-self: stretch;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .agent-trajectory-modes button {
+    flex: 1;
+    padding-inline: 6px;
+  }
+
+  .agent-trajectory-zoom {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 850px) {
+  .agent-trajectory-modes button,
+  .agent-trajectory-zoom button {
+    min-height: 44px;
+  }
+
+  .agent-trajectory-plot {
+    grid-template-columns: 58px minmax(0, 1fr);
+    padding-inline: 8px;
+  }
+
+  .agent-trajectory-footer > span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-trajectory * {
+    scroll-behavior: auto;
+  }
+}
