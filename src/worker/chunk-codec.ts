@@ -49,6 +49,7 @@ function times(time0: number, gaps: readonly number[]): readonly number[] {
   for (const gap of gaps) {
     const previous = output.at(-1)
     if (previous === undefined) throw new Error('packed chunk row has no time anchor')
+    if (!Number.isSafeInteger(previous + gap)) throw new Error('packed chunk timestamp exceeds safe integers')
     output.push(previous + gap)
   }
   return output
@@ -58,10 +59,45 @@ function textRow(tag: 'text-chunks' | 'reasoning-chunks', row: Record<string, un
   const { seq0, time0, data } = envelope(tag, row)
   const run = runBase(tag, data, 'texts')
   const chunkType = tag === 'text-chunks' ? 'text-delta' : 'reasoning-delta'
+  const at = times(time0, run.dt)
   return run.values.map((text, index) => ({
-    type: 'assistant/chunk', seq: seq0 + index, time: times(time0, run.dt)[index],
+    type: 'assistant/chunk', seq: seq0 + index, time: at[index],
     data: { turn: run.turn, step: run.step, chunk: { type: chunkType, index: run.index, text } },
   }))
+}
+
+export interface TimedAssistantChunk {
+  readonly time: number
+  readonly chunk: Record<string, unknown>
+}
+
+/** Decode V2+ embedded runs without inventing Session sequence positions. */
+export function decodeAssistantStream(value: unknown): readonly TimedAssistantChunk[] {
+  if (!Array.isArray(value)) throw new Error('assistant stream must be an array')
+  return value.flatMap((candidate): TimedAssistantChunk[] => {
+    const row = recordOf(candidate)
+    if (row === undefined) throw new Error('assistant stream record must be an object')
+    if (row.type === 'chunk') {
+      const chunk = recordOf(row.chunk)
+      if (!exactKeys(row, ['type', 'time', 'chunk']) || !Number.isSafeInteger(row.time) || chunk === undefined || typeof chunk.type !== 'string') {
+        throw new Error('invalid assistant stream raw chunk')
+      }
+      return [{ time: row.time as number, chunk }]
+    }
+    if (row.type !== 'text-chunks' && row.type !== 'reasoning-chunks' && row.type !== 'tool-call-chunks') {
+      throw new Error(`unsupported assistant stream record ${String(row.type)}`)
+    }
+    if (!Number.isSafeInteger(row.index) || (row.index as number) < 0) throw new Error('assistant stream index must be non-negative')
+    const { index, ...rest } = row
+    const data: Record<string, unknown> = { ...rest, turn: 0, step: 0, index }
+    delete data.type
+    delete data.time0
+    const expanded = decodeStorageRecord({ type: row.type, seq0: 0, time0: row.time0, data })
+    return expanded.map(event => {
+      const decoded = event as { time: number; data: { chunk: Record<string, unknown> } }
+      return { time: decoded.time, chunk: decoded.data.chunk }
+    })
+  })
 }
 
 function toolRow(row: Record<string, unknown>): unknown[] {

@@ -1,4 +1,5 @@
-import type { ExplorerEvent, ParsedSessionJsonl } from '../worker/parser.ts'
+import { recordOf, type ExplorerEvent, type ParsedSessionJsonl } from '../worker/parser.ts'
+import { decodeAssistantStream } from '../worker/chunk-codec.ts'
 
 export type TimelineKind = 'user' | 'reasoning' | 'tool' | 'assistant' | 'system'
 
@@ -36,6 +37,7 @@ export interface ExecutionTool {
   readonly input: string
   readonly output: string
   readonly failed: boolean
+  readonly parentCallId?: string
 }
 
 export interface ExecutionStep {
@@ -61,7 +63,8 @@ export interface PromptEpoch {
   readonly ordinal: number
   readonly eventId: string
   readonly previousEventId: string | undefined
-  readonly reason: 'initial' | 'resume' | 'change'
+  readonly reason: 'initial' | 'resume' | 'change' | 'series'
+  readonly startsSeries?: true
   readonly turn: number | undefined
   readonly step: number | undefined
   readonly time: number
@@ -95,12 +98,6 @@ function eventId(sessionId: string, event: ExplorerEvent): string {
   return `${sessionId}:${String(event.seq)}`
 }
 
-function recordOf(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined
-}
-
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value
   if (!Array.isArray(value)) return ''
@@ -108,6 +105,9 @@ function textOf(value: unknown): string {
     const record = recordOf(item)
     if (record?.type === 'text' && typeof record.text === 'string') return [record.text]
     if (record?.type === 'image') return ['[图片]']
+    if (record?.type === 'file') return [`[文件：${String(recordOf(record.attachment)?.name ?? 'attachment')}]`]
+    if (record?.type === 'tool-result') return [textOf(record.content)]
+    if (record?.type === 'tool-addition' || record?.type === 'tool-removal') return [`[${record.type}: ${String(record.toolName)}]`]
     return []
   }).join('')
 }
@@ -123,8 +123,9 @@ function dataIndex(record: Record<string, unknown>, key: string): number | undef
 }
 
 function positionOf(event: ExplorerEvent): string {
-  const turn = typeof event.data.turn === 'number' ? event.data.turn : -1
-  const step = typeof event.data.step === 'number' ? event.data.step : -1
+  const data = recordOf(event.data) ?? {}
+  const turn = typeof data.turn === 'number' ? data.turn : -1
+  const step = typeof data.step === 'number' ? data.step : -1
   return `${String(turn)}:${String(step)}`
 }
 
@@ -133,6 +134,7 @@ function sameJson(left: unknown, right: unknown): boolean {
 }
 
 export function promptEpochLabel(epoch: PromptEpoch): string {
+  if (epoch.reason === 'series' && epoch.changedFields.length === 0) return 'Request Message Series Started'
   if (epoch.reason === 'initial') return 'Initial Request Context'
   if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'Request Context Resumed'
   const changed = new Set(epoch.changedFields)
@@ -150,10 +152,12 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
   const promptEpochs: PromptEpoch[] = []
   const events = new Map<string, ExplorerEvent>()
   const reasoning = new Map<string, { item: TimelineItem; record: ConversationRecord }>()
-  const pendingCalls = new Map<string, { readonly event: ExplorerEvent; readonly step: ExecutionStepBuilder | undefined }[]>()
+  const pendingCalls = new Map<string, { readonly event: ExplorerEvent; readonly step: ExecutionStepBuilder | undefined; readonly tool: ExecutionTool }[]>()
   const stepsById = new Map<string, ExecutionStepBuilder>()
   const turnsByNumber = new Map<number, ExecutionTurnBuilder>()
   const tokens: Record<string, number> = {}
+  const surface: ExplorerEvent[] = []
+  const ptcCalls = new Map<string, { event: ExplorerEvent; step: ExecutionStepBuilder | undefined; tool: ExecutionTool }>()
   let turnCount = 0
   let steps = 0
   let toolCalls = 0
@@ -181,8 +185,9 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
   }
 
   const ensureStep = (event: ExplorerEvent, id: string): ExecutionStepBuilder | undefined => {
-    const turn = dataIndex(event.data, 'turn')
-    const step = dataIndex(event.data, 'step')
+    const data = recordOf(event.data) ?? {}
+    const turn = dataIndex(data, 'turn')
+    const step = dataIndex(data, 'step')
     if (turn === undefined || step === undefined) return undefined
     activeTurn = turn
     const turnBuilder = ensureTurn(turn, event.time)
@@ -220,27 +225,38 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
   }
   for (const event of session.events) {
     const id = eventId(session.header.id, event)
+    const data = recordOf(event.data) ?? {}
+    if (event.surfaceOp === 'append') surface.push(event)
+    else if (event.surfaceOp !== undefined) {
+      const op = event.surfaceOp
+      const first = surface.findIndex(node => node.seq === op.startSeq)
+      const last = surface.findIndex(node => node.seq === op.endSeq)
+      if (first < 0 || last < first) throw new Error(`event ${event.seq} replaces missing or reversed surface nodes`)
+      surface.splice(first, last - first + 1, event)
+    }
     events.set(id, event)
     firstTime = firstTime === undefined ? event.time : Math.min(firstTime, event.time)
     lastTime = lastTime === undefined ? event.time : Math.max(lastTime, event.time)
     if (event.type === 'turn/start') {
       turnCount++
-      activeTurn = dataIndex(event.data, 'turn') ?? activeTurn
+      activeTurn = dataIndex(data, 'turn') ?? activeTurn
       if (activeTurn !== undefined) ensureTurn(activeTurn, event.time)
     }
     if (event.type === 'step/start') steps++
     const step = ensureStep(event, id)
     if (event.type === 'step/start' && step !== undefined) activeStep = step
-    const turn = dataIndex(event.data, 'turn') ?? activeTurn
+    const turn = dataIndex(data, 'turn') ?? activeTurn
     if (turn !== undefined) ensureTurn(turn, event.time)
 
     if (event.type === 'request/header') {
-      const header = recordOf(event.data.header) ?? {}
+      const header = recordOf(data.header) ?? {}
       const config = recordOf(header.config) ?? {}
       const tools = Array.isArray(header.tools) ? header.tools : []
-      const system = typeof header.system === 'string' ? header.system : ''
-      const reason = event.data.reason === 'initial' || event.data.reason === 'resume' || event.data.reason === 'change'
-        ? event.data.reason
+      const system = session.header.version >= 3
+        ? surface.filter(node => node.type === 'system/message').map(node => textOf(recordOf(recordOf(node.data)?.message)?.content)).filter(text => text !== '').join('\n\n')
+        : typeof header.system === 'string' ? header.system : ''
+      const reason = data.reason === 'initial' || data.reason === 'resume' || data.reason === 'change' || data.reason === 'series'
+        ? data.reason
         : 'change'
       const changedFields: PromptEpochField[] = []
       if (currentPromptEpoch !== undefined) {
@@ -253,6 +269,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
         eventId: id,
         previousEventId: currentPromptEpoch?.eventId,
         reason,
+        ...(data.startsSeries === true ? { startsSeries: true as const } : {}),
         turn: activeStep?.turn ?? turn,
         step: activeStep?.step,
         time: event.time,
@@ -260,7 +277,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
         system,
         tools,
         toolNames: tools.flatMap((tool) => {
-          const name = recordOf(tool)?.name
+          const name = typeof tool === 'string' ? tool : recordOf(tool)?.name
           return typeof name === 'string' ? [name] : []
         }),
         changedFields,
@@ -278,7 +295,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     }
 
     if (event.type === 'user/message') {
-      const content = textOf(event.data.content)
+      const content = textOf(data.content)
       if (turn !== undefined && content !== '') ensureTurn(turn, event.time).prompt = { eventId: id, content }
       append({ id, eventId: id, kind: 'user', label: '用户输入', start: event.time, end: event.time, eventSeqs: [event.seq] }, {
         eventId: id, kind: 'user', label: '用户输入', content, eventSeqs: [event.seq],
@@ -286,7 +303,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       continue
     }
     if (event.type === 'assistant/chunk') {
-      const chunk = recordOf(event.data.chunk)
+      const chunk = recordOf(data.chunk)
       if (chunk?.type !== 'reasoning-delta' || typeof chunk.index !== 'number' || typeof chunk.text !== 'string') continue
       if (step !== undefined) {
         step.reasoningEventId ??= id
@@ -315,26 +332,33 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     if (event.type === 'tool/call') {
       toolCalls++
       const calls = pendingCalls.get(positionOf(event)) ?? []
-      calls.push({ event, step })
+      const tool: ExecutionTool = { eventId: id, name: typeof data.name === 'string' ? data.name : '工具调用',
+        input: typeof data.arguments === 'string' ? data.arguments : '', output: '', failed: false }
+      if (step !== undefined) step.tools.push(tool)
+      calls.push({ event, step, tool })
       pendingCalls.set(positionOf(event), calls)
       continue
     }
     if (event.type === 'tool/result') {
       toolResults++
-      if (event.data.error !== undefined) errors++
+      const message = recordOf(data.message)
+      const legacy = Array.isArray(message?.content) ? message.content.map(recordOf).find(block => block?.type === 'tool-result') : undefined
+      const resultId = message?.toolCallId ?? legacy?.toolCallId
+      const failed = message?.isError === true || legacy?.isError === true || data.error !== undefined
+      if (failed) errors++
       const calls = pendingCalls.get(positionOf(event))
-      const call = calls?.shift()
+      const callIndex = resultId === undefined ? 0 : calls?.findIndex(call => recordOf(call.event.data)?.callId === resultId) ?? -1
+      const call = callIndex < 0 ? undefined : calls?.splice(callIndex, 1)[0]
       const callId = call === undefined ? id : eventId(session.header.id, call.event)
-      const name = typeof call?.event.data.name === 'string' ? call.event.data.name : '工具调用'
-      const content = textOf(recordOf(event.data.message)?.content)
+      const name = call?.tool.name ?? '工具调用'
+      const content = textOf(legacy?.content ?? message?.content)
       const toolStep = call?.step ?? step
-      if (toolStep !== undefined) toolStep.tools.push({
-        eventId: callId,
-        name,
-        input: typeof call?.event.data.arguments === 'string' ? call.event.data.arguments : '',
-        output: content,
-        failed: event.data.error !== undefined,
-      })
+      const completed: ExecutionTool = { eventId: callId, name, input: call?.tool.input ?? '', output: content, failed }
+      if (toolStep !== undefined) {
+        const index = call === undefined ? -1 : toolStep.tools.indexOf(call.tool)
+        if (index < 0) toolStep.tools.push(completed)
+        else toolStep.tools[index] = completed
+      }
       append({
         id: callId, eventId: callId, kind: 'tool', label: name, start: call?.event.time ?? event.time, end: event.time,
         eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq],
@@ -343,11 +367,51 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       })
       continue
     }
+    if (['tool/ptc-dispatch-start', 'tool/ptc-dispatch', 'tool/code-dispatch-start', 'tool/code-dispatch'].includes(event.type)) {
+      const key = typeof data.subCallId === 'string' ? data.subCallId : id
+      const call = ptcCalls.get(key)
+      const toolStep = call?.step ?? step ?? activeStep
+      const tool: ExecutionTool = { eventId: call?.tool.eventId ?? id,
+        name: typeof data.name === 'string' ? data.name : 'PTC',
+        input: typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments ?? {}),
+        output: textOf(data.content), failed: data.isError === true,
+        ...(typeof data.parentCallId === 'string' ? { parentCallId: data.parentCallId } : {}),
+      }
+      const existing = call === undefined || toolStep === undefined ? -1 : toolStep.tools.indexOf(call.tool)
+      if (toolStep !== undefined) {
+        if (existing < 0) toolStep.tools.push(tool)
+        else toolStep.tools[existing] = tool
+      }
+      if (event.type.endsWith('-start')) ptcCalls.set(key, { event, step: toolStep, tool })
+      else {
+        ptcCalls.delete(key)
+        append({ id: tool.eventId, eventId: tool.eventId, kind: 'tool', label: tool.name, start: call?.event.time ?? event.time, end: event.time,
+          eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq] }, {
+          eventId: tool.eventId, kind: 'tool', label: tool.name, content: tool.output, eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq],
+        })
+      }
+      continue
+    }
     if (event.type === 'assistant/message') {
-      const message = recordOf(event.data.message)
-      const usage = recordOf(event.data.usage)
+      const message = recordOf(data.message)
+      const stream = data.stream === undefined ? [] : decodeAssistantStream(data.stream)
+      const reasoningChunks = stream.filter(item => item.chunk.type === 'reasoning-delta'
+        || (item.chunk.type === 'block-end' && recordOf(item.chunk.block)?.type === 'reasoning'))
+      const finalReasoning = Array.isArray(message?.content)
+        ? message.content.map(recordOf).filter(block => block?.type === 'reasoning').map(block => block?.text).filter((text): text is string => typeof text === 'string').join('') : ''
+      const deltaReasoning = reasoningChunks.filter(item => item.chunk.type === 'reasoning-delta').map(item => item.chunk.text).join('')
+      const reasoningText = finalReasoning || deltaReasoning
+      if (reasoningText !== '' && (stream.length > 0 || step?.reasoningParts.length === 0)) {
+        if (step !== undefined) { step.reasoningEventId ??= id; step.reasoningParts.push(reasoningText) }
+        const start = reasoningChunks.length === 0 ? event.time : Math.min(...reasoningChunks.map(item => item.time))
+        const end = reasoningChunks.length === 0 ? event.time : Math.max(...reasoningChunks.map(item => item.time))
+        append({ id: `${id}:reasoning`, eventId: id, kind: 'reasoning', label: '模型推理', start, end, eventSeqs: [event.seq] }, {
+          eventId: id, kind: 'reasoning', label: '模型推理', content: reasoningText, eventSeqs: [event.seq],
+        })
+      }
+      const usage = recordOf(data.usage)
       if (usage !== undefined) {
-        for (const key of ['inputTokens', 'outputTokens', 'reasoningTokens', 'totalTokens']) {
+        for (const key of ['inputTokens', 'outputTokens', 'reasoningTokens', 'totalTokens', 'cacheReadTokens', 'cacheWriteTokens']) {
           const value = dataNumber(usage, key)
           if (value !== 0) tokens[key] = (tokens[key] ?? 0) + value
         }
@@ -368,13 +432,18 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     }
     if (!['turn/start', 'turn/end', 'step/start', 'step/end', 'request/header', 'request/context'].includes(event.type)) {
       append({ id, eventId: id, kind: 'system', label: event.type, start: event.time, end: event.time, eventSeqs: [event.seq] }, {
-        eventId: id, kind: 'system', label: event.type, content: JSON.stringify(event.data), eventSeqs: [event.seq],
+        eventId: id, kind: 'system', label: event.type, content: event.type === 'system/message' || event.type === 'developer/message'
+          ? textOf(recordOf(data.message)?.content) : JSON.stringify(event.data), eventSeqs: [event.seq],
       })
     }
     const endedStep = activeStep
     if (event.type === 'step/end' && endedStep !== undefined
-      && endedStep.turn === dataIndex(event.data, 'turn')
-      && endedStep.step === dataIndex(event.data, 'step')) activeStep = undefined
+      && endedStep.turn === dataIndex(data, 'turn')
+      && endedStep.step === dataIndex(data, 'step')) activeStep = undefined
+  }
+  for (const calls of pendingCalls.values()) for (const call of calls) {
+    const id = eventId(session.header.id, call.event)
+    timeline.push({ id, eventId: id, kind: 'tool', label: call.tool.name, start: call.event.time, end: call.event.time, eventSeqs: [call.event.seq] })
   }
   const execution = [...turnsByNumber.values()].sort((a, b) => a.turn - b.turn).map(turn => ({
     id: turn.id,

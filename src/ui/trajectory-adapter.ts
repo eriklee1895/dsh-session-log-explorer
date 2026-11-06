@@ -24,13 +24,13 @@ export function adaptTrajectoryTurns(
   turns: readonly ExecutionTurn[],
   items: readonly TimelineItem[],
 ): readonly TrajectoryTurn[] {
-  const timing = new Map(items.map(item => [item.eventId, item] as const))
+  const timing = new Map(items.map(item => [`${item.eventId}:${item.kind}`, item] as const))
   let index = 0
   const cell = (
     eventId: string,
     input: Omit<TrajectoryCell, 'index' | 'recordId' | 'startedAt' | 'timeSeconds'>,
   ): TrajectoryCell => {
-    const item = timing.get(eventId)
+    const item = timing.get(`${eventId}:${input.kind}`)
     return {
       ...input,
       index: ++index,

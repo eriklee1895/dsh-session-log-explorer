@@ -53,12 +53,12 @@ npx @eriklee1895/dsh-session-log-explorer
 
 ## 支持的输入
 
-- `session.jsonl`
-- `session.jsonl.zstd`
+- `session.jsonl`（V0）、`session.vN.jsonl`（V1–V4）
+- 上述日志对应的 `.jsonl.zstd` 压缩文件
 - 会话目录，包括 `subagents/` 与 `media/`
 - DSH 会话导出的 ZIP
 
-解析器支持 session format version `0`，并会将打包的文本、推理和工具调用 chunk 行展开为逻辑事件。
+解析器支持 **V0–V4** 会话格式，包括旧版 packed chunk 和新版内嵌 timed stream。它保留原始事件，处理 V3 系统消息替换和 V4 工具结果，媒体与文件附件始终留在本地。目录和 ZIP 导入会按数值选择每个会话的最高 generation；遇到不支持的新版本会明确报错，不会静默回退。已核验的上游版本、测试覆盖与限制见 [兼容性验证](docs/compatibility.md)。
 
 ## 本地开发
 

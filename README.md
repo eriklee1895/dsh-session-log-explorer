@@ -52,12 +52,12 @@ Files are parsed in a browser Worker and remain in the current browser tab. The 
 
 ## Supported inputs
 
-- `session.jsonl`
-- `session.jsonl.zstd`
+- `session.jsonl` (V0), `session.vN.jsonl` (V1–V4)
+- The same log names compressed as `.jsonl.zstd`
 - A session directory, including `subagents/` and `media/`
 - DSH session export ZIP archives
 
-The parser supports session format version `0` and expands packed text, reasoning, and tool-call chunk rows into logical events.
+The parser reads session formats **V0–V4**, including legacy packed chunks and current embedded timed streams. It preserves raw events, handles V3 system-message replacements and V4 tool results, and keeps media and file attachments local. Directory and ZIP imports select the numerically highest generation per session and reject unsupported newer generations without silently falling back. See [Compatibility checks](docs/compatibility.md) for the pinned upstream version, test coverage and limits.
 
 ## Develop locally
 

@@ -33,7 +33,7 @@ describe('parseSessionJsonl', () => {
       [1, 1_700_000_000_104, 'assistant/chunk'],
       [2, 1_700_000_000_110, 'assistant/chunk'],
     ])
-    expect(result.events.map(event => event.data.chunk)).toEqual([
+    expect(result.events.map(event => (event.data as Record<string, unknown>).chunk)).toEqual([
       { type: 'reasoning-delta', index: 0, text: 'first' },
       { type: 'reasoning-delta', index: 0, text: ' second' },
       { type: 'reasoning-delta', index: 0, text: ' third' },
@@ -46,8 +46,8 @@ describe('parseSessionJsonl', () => {
   })
 
   it('refuses a session written by an unsupported DSH format version', () => {
-    expect(() => parseSessionJsonl(`${JSON.stringify({ ...header, version: 1 })}\n`))
-      .toThrow('unsupported DSH session format version 1')
+    expect(() => parseSessionJsonl(`${JSON.stringify({ ...header, version: 5 })}\n`))
+      .toThrow('unsupported DSH session format version 5')
   })
 
   it('refuses malformed packed rows rather than dropping their chunks', () => {

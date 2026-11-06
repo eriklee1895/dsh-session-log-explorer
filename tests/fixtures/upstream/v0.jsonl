@@ -1,0 +1,25 @@
+{"type":"session","version":0,"id":"{{session:1}}","createdAt":1783600629539,"cwd":"{{cwd}}","delegationDepth":0}
+{"type":"permission/preset","data":{"preset":"danger-full-access"},"seq":0,"time":1783600629539}
+{"type":"sandbox/mode","data":{"mode":"danger-full-access"},"seq":1,"time":1783600629540}
+{"type":"approval/policy","data":{"policy":"never"},"seq":2,"time":1783600629541}
+{"type":"agent/inbox/spliced","data":{"target":"next-turn","start":0,"inserted":[{"content":[{"type":"text","text":"Reply with exactly the word: PONG. Do not use any tools."}],"source":{"kind":"user"},"role":"user","id":"{{message:1}}"}]},"seq":3,"time":1783600629542}
+{"type":"turn/start","data":{"turn":1},"seq":4,"time":1783600629543}
+{"type":"agent/inbox/spliced","data":{"target":"next-turn","start":0,"removedCount":1,"inserted":[]},"seq":5,"time":1783600629544}
+{"type":"step/start","data":{"turn":1,"step":1},"seq":6,"time":1783600629545}
+{"type":"user/message","data":{"content":[{"type":"text","text":"Reply with exactly the word: PONG. Do not use any tools."}],"source":{"kind":"user"},"role":"user","id":"{{message:1}}"},"surfaceOp":"append","seq":7,"time":1783600629546}
+{"type":"user/message","data":{"content":[{"type":"text","text":"Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\n\nCurrent DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations.\n\nApproval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."}],"source":{"kind":"plugin","plugin":"@deepseek-ai/dsh-system-prompt","form":"snapshot","sections":[{"name":"sandbox:policy","text":"Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations."},{"name":"approval:policy","text":"Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."}]},"role":"user","id":"{{message:2}}"},"surfaceOp":"append","seq":8,"time":1783600629547}
+{"type":"session/title","data":{"title":"Reply with exactly the word:","messageSeqs":[7],"source":{"kind":"fallback"}},"seq":9,"time":1783600629548}
+{"type":"request/header","data":{"header":{"config":{"provider":"deepseek-official","model":"deepseek-v4-flash"},"system":"{{system}}","tools":"{{tools}}"},"reason":"initial"},"seq":10,"time":1783600629549}
+{"type":"request/context","data":{"provider":"deepseek-official","model":"deepseek-v4-flash"},"seq":11,"time":1783600629550}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"block-start","index":0,"blockType":"reasoning"}},"seq":12,"time":1783600629551}
+{"type":"reasoning-chunks","data":{"turn":1,"step":1,"index":0,"dt":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0],"texts":["The"," user"," wants"," me"," to"," reply"," with"," exactly"," the"," word"," \"","P","ONG","\""," and"," not"," use"," any"," tools","."]},"seq0":13,"time0":1783600629552}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"block-start","index":1,"blockType":"text"}},"seq":33,"time":1783600629572}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"text-delta","index":1,"text":"P"}},"seq":34,"time":1783600629573}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"text-delta","index":1,"text":"ONG"}},"seq":35,"time":1783600629574}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"block-end","index":0,"block":{"type":"reasoning","text":"The user wants me to reply with exactly the word \"PONG\" and not use any tools."}}},"seq":36,"time":1783600629575}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"block-end","index":1,"block":{"type":"text","text":"PONG"}}},"seq":37,"time":1783600629576}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"usage","usage":{"inputTokens":3091,"outputTokens":23,"cacheReadTokens":0,"reasoningTokens":20}}},"seq":38,"time":1783600629577}
+{"type":"assistant/chunk","data":{"turn":1,"step":1,"chunk":{"type":"finish","reason":{"kind":"stop"}}},"seq":39,"time":1783600629578}
+{"type":"assistant/message","data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"reasoning","text":"The user wants me to reply with exactly the word \"PONG\" and not use any tools."},{"type":"text","text":"PONG"}],"source":{"kind":"model","provider":"deepseek-official","model":"deepseek-v4-flash"},"id":"{{message:3}}"},"usage":{"inputTokens":3091,"outputTokens":23,"cacheReadTokens":0,"reasoningTokens":20}},"sourceEventSeqs":[12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39],"surfaceOp":"append","seq":40,"time":1783600629579}
+{"type":"step/end","data":{"turn":1,"step":1},"seq":41,"time":1783600629580}
+{"type":"turn/end","data":{"turn":1,"reason":{"kind":"completed"}},"seq":42,"time":1783600629581}

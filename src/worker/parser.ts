@@ -1,13 +1,14 @@
-import { decodeStorageRecord } from './chunk-codec.ts'
+import { decodeAssistantStream, decodeStorageRecord } from './chunk-codec.ts'
 
 export interface ExplorerSessionHeader {
   readonly type: 'session'
-  readonly version: 0
+  readonly version: 0 | 1 | 2 | 3 | 4
   readonly id: string
   readonly createdAt: number
   readonly cwd?: string
   readonly parentSession?: string
   readonly seedLength?: number
+  readonly isSeeded?: boolean
   readonly origin?: 'subagent'
   readonly delegationDepth: number
   readonly agentPreset?: string
@@ -17,7 +18,10 @@ export interface ExplorerEvent {
   readonly type: string
   readonly seq: number
   readonly time: number
-  readonly data: Record<string, unknown>
+  readonly data: unknown
+  readonly ignorable?: true
+  readonly sourceEventSeqs?: readonly number[]
+  readonly surfaceOp?: 'append' | { readonly op: 'replace'; readonly startSeq: number; readonly endSeq: number }
   readonly storageLine: number
   readonly rawRecord: string
 }
@@ -27,7 +31,7 @@ export interface ParsedSessionJsonl {
   readonly events: readonly ExplorerEvent[]
 }
 
-function recordOf(value: unknown): Record<string, unknown> | undefined {
+export function recordOf(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : undefined
@@ -36,12 +40,12 @@ function recordOf(value: unknown): Record<string, unknown> | undefined {
 function parseHeader(value: unknown): ExplorerSessionHeader {
   const record = recordOf(value)
   if (record?.type !== 'session') throw new Error('first line must be a DSH session header')
-  if (record.version !== 0) throw new Error(`unsupported DSH session format version ${String(record.version)}`)
+  if (![0, 1, 2, 3, 4].includes(record.version as number)) throw new Error(`unsupported DSH session format version ${String(record.version)}`)
   if (typeof record.id !== 'string' || record.id === '') throw new Error('session header id must be a non-empty string')
   if (!Number.isSafeInteger(record.createdAt) || (record.createdAt as number) < 0) {
     throw new Error('session header createdAt must be a non-negative safe integer')
   }
-  if (!Number.isSafeInteger(record.delegationDepth) || (record.delegationDepth as number) < 0) {
+  if (record.delegationDepth !== undefined && (!Number.isSafeInteger(record.delegationDepth) || (record.delegationDepth as number) < 0)) {
     throw new Error('session header delegationDepth must be a non-negative safe integer')
   }
   if (record.cwd !== undefined && typeof record.cwd !== 'string') throw new Error('session header cwd must be a string')
@@ -51,29 +55,76 @@ function parseHeader(value: unknown): ExplorerSessionHeader {
   }
   if (record.origin !== undefined && record.origin !== 'subagent') throw new Error('session header origin must be "subagent"')
   if (record.agentPreset !== undefined && typeof record.agentPreset !== 'string') throw new Error('session header agentPreset must be a string')
-  return record as unknown as ExplorerSessionHeader
+  if ((record.version as number) >= 2 && typeof record.isSeeded !== 'boolean') throw new Error('session header isSeeded must be a boolean')
+  return { ...record, delegationDepth: record.delegationDepth ?? 0 } as unknown as ExplorerSessionHeader
 }
 
-function eventOf(value: unknown, storageLine: number, rawRecord: string): ExplorerEvent {
+function sourceSeqs(value: unknown, seq: number): readonly number[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error('sourceEventSeqs must be an array')
+  const result: number[] = []
+  const seen = new Set<number>()
+  for (const member of value) {
+    const [start, end] = Array.isArray(member) && member.length === 2 ? member : [member, member]
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || end >= seq) {
+      throw new Error('sourceEventSeqs must name unique earlier event positions')
+    }
+    for (let n = start; n <= end; n++) {
+      if (seen.has(n)) throw new Error('sourceEventSeqs must name unique earlier event positions')
+      seen.add(n)
+      result.push(n)
+    }
+  }
+  return result
+}
+
+function eventOf(value: unknown, storageLine: number, rawRecord: string, expectedSeq: number): ExplorerEvent {
   const record = recordOf(value)
   if (record === undefined || typeof record.type !== 'string') throw new Error(`line ${String(storageLine)} is not a session event`)
   if (!Number.isSafeInteger(record.seq) || (record.seq as number) < 0) {
     throw new Error(`line ${String(storageLine)} event seq must be a non-negative safe integer`)
   }
+  if (record.seq !== expectedSeq) throw new Error(`line ${storageLine} event seq ${String(record.seq)} does not continue expected seq ${expectedSeq}`)
   if (!Number.isSafeInteger(record.time)) throw new Error(`line ${String(storageLine)} event time must be a safe integer`)
   const data = recordOf(record.data)
-  if (data === undefined) throw new Error(`line ${String(storageLine)} event data must be an object`)
+  if (data === undefined && record.ignorable !== true) throw new Error(`line ${String(storageLine)} event data must be an object`)
+  if (!Object.hasOwn(record, 'data')) throw new Error(`line ${String(storageLine)} event data is missing`)
+  const seq = record.seq as number
+  const refs = sourceSeqs(record.sourceEventSeqs, seq)
+  const op = record.surfaceOp
+  let surfaceOp: ExplorerEvent['surfaceOp']
+  if (op === 'append') surfaceOp = op
+  else if (op !== undefined) {
+    const replace = recordOf(op)
+    const start = replace?.startSeq ?? replace?.start
+    const end = replace?.endSeq ?? replace?.end
+    if (replace?.op !== 'replace' || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+      || (start as number) < 0 || (end as number) < 0 || (start as number) >= seq || (end as number) >= seq) {
+      throw new Error(`line ${storageLine} has invalid surfaceOp`)
+    }
+    surfaceOp = { op: 'replace', startSeq: start as number, endSeq: end as number }
+  }
+  if (record.type === 'assistant/message' || record.type === 'assistant/attempt') {
+    if (data?.stream !== undefined) {
+      try { decodeAssistantStream(data.stream) } catch (error) {
+        throw new Error(`line ${storageLine} cannot decode assistant stream: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  }
   return {
     type: record.type,
     seq: record.seq as number,
     time: record.time as number,
-    data,
+    data: record.data,
+    ...(record.ignorable === true ? { ignorable: true } : {}),
+    ...(refs === undefined ? {} : { sourceEventSeqs: refs }),
+    ...(surfaceOp === undefined ? {} : { surfaceOp }),
     storageLine,
     rawRecord,
   }
 }
 
-/** Parse one plaintext DSH v0 session artifact without changing its contents. */
+/** Read V0–V4 without migrating or renumbering durable events. */
 export function parseSessionJsonl(text: string): ParsedSessionJsonl {
   const lines = text.split('\n')
   const first = lines[0]
@@ -104,10 +155,7 @@ export function parseSessionJsonl(text: string): ParsedSessionJsonl {
       throw new Error(`line ${String(storageLine)} cannot decode: ${error instanceof Error ? error.message : String(error)}`)
     }
     for (const decoded of expanded) {
-      const event = eventOf(decoded, storageLine, rawRecord)
-      if (event.seq !== expectedSeq) {
-        throw new Error(`line ${String(storageLine)} event seq ${String(event.seq)} does not continue expected seq ${String(expectedSeq)}`)
-      }
+      const event = eventOf(decoded, storageLine, rawRecord, expectedSeq)
       events.push(event)
       expectedSeq++
     }

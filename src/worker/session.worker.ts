@@ -38,6 +38,12 @@ self.addEventListener('message', (message: MessageEvent<ExplorerWorkerRequest>) 
         respond({ type: 'media', name: request.name, bytes })
         return
       }
+      if (request.type === 'attachment') {
+        const file = store.attachment(request.path)
+        const bytes = file?.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer | undefined
+        respond({ type: 'attachment', path: request.path, bytes })
+        return
+      }
       respond({ type: 'event', eventId: request.eventId, event: store.event(request.eventId) })
     } catch (error: unknown) {
       respond({ type: 'error', message: error instanceof Error ? error.message : String(error) })
