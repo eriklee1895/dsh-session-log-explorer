@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react'
 import type { ConversationRecord, ExecutionTurn, PromptEpoch, TimelineItem } from '../model/projection.ts'
-import type { ExplorerSessionView } from '../worker/session-store.ts'
+import type { ExplorerConversationPage, ExplorerSessionView } from '../worker/session-store.ts'
 import {
   AgentTrajectory,
   trajectoryFocusIndexes,
@@ -19,7 +19,7 @@ type WorkspaceView = 'overview' | 'execution' | 'timeline' | 'conversation'
 export interface ExplorerWorkspaceProps {
   readonly loading?: boolean
   readonly onPageChange?: (offset: number) => void
-  readonly conversationPage?: { readonly offset: number; readonly total: number; readonly nextOffset: number }
+  readonly conversationPage?: Omit<ExplorerConversationPage, 'records'>
   readonly onConversationPageChange?: (offset?: number) => void
   readonly session: ExplorerSessionView
   readonly conversation: readonly ConversationRecord[]
@@ -273,7 +273,7 @@ export function ExplorerWorkspace({
       <button disabled={loading || session.page.offset + session.page.count >= session.page.total} onClick={() => { onPageChange?.(session.page!.offset + session.page!.count) }}>下一页</button>
     </nav>}
     {view === 'conversation' && conversationPage !== undefined && conversationPage.total > 0 && <nav className="record-pagination" aria-label="对话记录分页">
-      <button disabled={loading || conversationPage.offset === 0} onClick={() => { onConversationPageChange?.(Math.max(0, conversationPage.offset - 100)) }}>较早记录</button>
+      <button disabled={loading || conversationPage.offset === 0} onClick={() => { onConversationPageChange?.(conversationPage.previousOffset) }}>较早记录</button>
       <span>对话记录 {conversationPage.offset + 1}–{conversationPage.nextOffset} / {conversationPage.total}</span>
       <button disabled={loading || conversationPage.nextOffset >= conversationPage.total} onClick={() => { onConversationPageChange?.(conversationPage.nextOffset) }}>较新记录</button>
     </nav>}

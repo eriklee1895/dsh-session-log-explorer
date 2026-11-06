@@ -2,6 +2,8 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ExplorerWorkspace } from '../src/ui/ExplorerWorkspace.tsx'
+import { useState } from 'react'
+import { ExplorerSessionStore } from '../src/worker/session-store.ts'
 
 const session = {
   id: 'root',
@@ -28,6 +30,38 @@ const session = {
 
 describe('ExplorerWorkspace', () => {
   afterEach(() => { cleanup() })
+
+  it('returns to the adjacent character-limited page through repeated forward/back navigation', async () => {
+    const store = new ExplorerSessionStore()
+    await store.importFile({ name: 'session.v4.jsonl', bytes: new TextEncoder().encode([
+      JSON.stringify({ type: 'session', version: 4, id: 'root', createdAt: 1, delegationDepth: 0, isSeeded: false }),
+      ...Array.from({ length: 10 }, (_, seq) => JSON.stringify({ type: 'user/message', seq, time: seq + 1,
+        data: { role: 'user', id: `message-${seq}`, source: 'human', content: [{ type: 'text', text: `record-${seq}:` + 'x'.repeat(69_991) }] } })),
+    ].join('\n')) })
+    function PagedConversation() {
+      const [page, setPage] = useState(() => store.conversationPage('root'))
+      return <ExplorerWorkspace session={session} conversation={page.records} conversationPage={page}
+        onConversationPageChange={offset => { setPage(store.conversationPage('root', offset)) }}
+        selectedEventId={undefined} onEventSelect={() => {}} />
+    }
+    render(<PagedConversation />)
+    fireEvent.click(screen.getByRole('button', { name: '对话' }))
+    const pages = within(screen.getByRole('navigation', { name: '对话记录分页' }))
+    expect((pages.getByRole('button', { name: '较早记录' }) as HTMLButtonElement).disabled).toBe(true)
+    for (const range of ['4–6', '7–9', '10–10']) {
+      fireEvent.click(pages.getByRole('button', { name: '较新记录' }))
+      expect(pages.getByText(`对话记录 ${range} / 10`)).toBeTruthy()
+    }
+    expect((pages.getByRole('button', { name: '较新记录' }) as HTMLButtonElement).disabled).toBe(true)
+    for (const range of ['7–9', '4–6', '1–3']) {
+      fireEvent.click(pages.getByRole('button', { name: '较早记录' }))
+      expect(pages.getByText(`对话记录 ${range} / 10`)).toBeTruthy()
+    }
+    fireEvent.click(pages.getByRole('button', { name: '较新记录' }))
+    expect(pages.getByText('对话记录 4–6 / 10')).toBeTruthy()
+    fireEvent.click(pages.getByRole('button', { name: '较早记录' }))
+    expect(pages.getByText('对话记录 1–3 / 10')).toBeTruthy()
+  })
 
   it('renders the canonical one-based DSH positions without shifting them', () => {
     render(<ExplorerWorkspace

@@ -3,6 +3,14 @@ import { ExplorerSessionStore } from '../src/worker/session-store.ts'
 
 const encoder = new TextEncoder()
 
+function conversationArtifact(lengths: readonly number[], id = 'pages'): Uint8Array {
+  return encoder.encode([
+    JSON.stringify({ type: 'session', version: 4, id, createdAt: 1, delegationDepth: 0, isSeeded: false }),
+    ...lengths.map((length, seq) => JSON.stringify({ type: 'user/message', seq, time: seq + 1,
+      data: { role: 'user', id: `message-${seq}`, source: 'human', content: [{ type: 'text', text: 'x'.repeat(length) }] } })),
+  ].join('\n'))
+}
+
 function artifact(id: string, parentSession?: string): Uint8Array {
   return encoder.encode([
     JSON.stringify({ type: 'session', version: 0, id, createdAt: 1_700_000_000_000, delegationDepth: parentSession === undefined ? 0 : 1, ...(parentSession === undefined ? {} : { parentSession }) }),
@@ -19,6 +27,68 @@ function artifactWithMissingImage(): Uint8Array {
 }
 
 describe('ExplorerSessionStore', () => {
+  it.each([
+    { name: 'record-count limit', lengths: Array<number>(205).fill(10), offsets: [0, 100, 200, 205] },
+    { name: 'short character-limited pages', lengths: Array<number>(10).fill(70_000), offsets: [0, 3, 6, 9, 10] },
+    { name: 'exact character limit and oversized records', lengths: [131_072, 131_072, 1, 262_144, 1, 300_000, 0, 1], offsets: [0, 2, 3, 4, 5, 6, 8] },
+    { name: 'empty record bodies', lengths: Array<number>(205).fill(0), offsets: [0, 100, 200, 205] },
+  ])('round-trips every record across $name without skipping pages', async ({ lengths, offsets }) => {
+    const store = new ExplorerSessionStore()
+    await store.importFile({ name: 'session.v4.jsonl', bytes: conversationArtifact(lengths) })
+    let page = store.conversationPage('pages')
+    const seen: string[] = []
+    for (let index = 0; index < offsets.length - 1; index++) {
+      expect(page).toMatchObject({ offset: offsets[index], nextOffset: offsets[index + 1], previousOffset: offsets[Math.max(0, index - 1)] })
+      const ids = lengths.slice(offsets[index], offsets[index + 1]).map((_, offset) => `pages:${offsets[index]! + offset}`)
+      expect(page.records.map(record => record.eventId)).toEqual(ids)
+      seen.push(...page.records.map(record => record.eventId))
+      if (index < offsets.length - 2) page = store.conversationPage('pages', page.nextOffset)
+    }
+    expect(seen).toEqual(lengths.map((_, index) => `pages:${index}`))
+    for (let index = offsets.length - 2; index > 0; index--) {
+      page = store.conversationPage('pages', page.previousOffset)
+      expect(page.offset).toBe(offsets[index - 1])
+      expect(store.conversationPage('pages', page.nextOffset).offset).toBe(offsets[index])
+    }
+    expect(page.previousOffset).toBe(0)
+  })
+
+  it('normalizes direct offsets to page boundaries and handles empty/end boundaries', async () => {
+    const store = new ExplorerSessionStore()
+    await store.importFile({ name: 'session.v4.jsonl', bytes: conversationArtifact(Array<number>(10).fill(70_000)) })
+    for (const offset of [-10, Number.NaN, 2.9]) {
+      expect(store.conversationPage('pages', offset)).toMatchObject({ offset: 0, nextOffset: 3, previousOffset: 0 })
+    }
+    expect(store.conversationPage('pages', 8)).toMatchObject({ offset: 6, nextOffset: 9, previousOffset: 3 })
+    for (const offset of [10, 1000, Number.POSITIVE_INFINITY]) {
+      expect(store.conversationPage('pages', offset)).toMatchObject({ offset: 10, nextOffset: 10, previousOffset: 9, records: [] })
+    }
+    expect(store.conversationPage('missing')).toMatchObject({ offset: 0, nextOffset: 0, previousOffset: 0, total: 0, records: [] })
+    await store.importFile({ name: 'session.v4.jsonl', bytes: conversationArtifact([]) })
+    expect(store.conversationPage('pages')).toMatchObject({ offset: 0, nextOffset: 0, previousOffset: 0, total: 0, records: [] })
+  })
+
+  it('resets page boundaries when replacing a session with the same id', async () => {
+    const store = new ExplorerSessionStore()
+    await store.importFile({ name: 'session.v4.jsonl', bytes: conversationArtifact(Array<number>(205).fill(10)) })
+    store.conversationPage('pages', 200)
+    await store.importFile({ name: 'session.v4.jsonl', bytes: conversationArtifact(Array<number>(10).fill(70_000)) })
+    expect(store.conversationPage('pages', 9)).toMatchObject({ offset: 9, nextOffset: 10, previousOffset: 6 })
+    expect(store.conversationPage('pages', 6)).toMatchObject({ offset: 6, nextOffset: 9, previousOffset: 3 })
+  })
+
+  it('keeps independently paged sessions on their own boundaries', async () => {
+    const store = new ExplorerSessionStore()
+    await store.importDirectory([
+      { name: 'session.v4.jsonl', path: 'session.v4.jsonl', bytes: conversationArtifact(Array<number>(10).fill(70_000)) },
+      { name: 'session.v4.jsonl', path: 'subagents/child/session.v4.jsonl', bytes: conversationArtifact(Array<number>(205).fill(10), 'child') },
+    ])
+    expect(store.conversationPage('pages', 9)).toMatchObject({ offset: 9, previousOffset: 6, nextOffset: 10 })
+    expect(store.conversationPage('child', 200)).toMatchObject({ offset: 200, previousOffset: 100, nextOffset: 205 })
+    expect(store.conversationPage('pages', 6)).toMatchObject({ offset: 6, previousOffset: 3, nextOffset: 9 })
+    expect(store.conversationPage('child', 100)).toMatchObject({ offset: 100, previousOffset: 0, nextOffset: 200 })
+  })
+
   it('sends bounded execution and conversation windows while preserving every raw event in the store', async () => {
     const rows: unknown[] = [{ type: 'session', version: 4, id: 'large', createdAt: 1, delegationDepth: 0, isSeeded: false }]
     let seq = 0
