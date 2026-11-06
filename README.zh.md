@@ -76,6 +76,16 @@ pnpm build
 pnpm test
 ```
 
+## npm 发布
+
+发布时，在 PR 中明确把 `package.json` 升到尚未使用的稳定版 `X.Y.Z`，检查包内容，并将审核通过的 PR 合入 `main`。合入前运行 `pnpm check` 和 `npm pack --dry-run --registry=https://registry.npmjs.org`。`publish.yml` 会在 Windows、macOS 和 Linux 上检查同一个合入提交；三者全部通过后，才构建、验证并将该 tarball 连同 provenance 发布到 npm `latest`。纯文档或其他未改版本号的推送不会发布。
+
+发布沿用已有 npm Trusted Publishing / GitHub OIDC，不需要 npm token。必须保留准确的 `publish.yml` 文件名、直接 push 触发方式和目前不使用 GitHub environment 的配置；[npm 还会校验调用方 workflow 和可选 environment](https://docs.npmjs.com/trusted-publishers/)。常规发布不得擅自改动这些身份或持久访问设置。
+
+发布任务串行运行，不会取消正在上传的任务。上传前检查 main 当前的版本，并重新查询 npm 官方源；已存在的版本直接跳过且不移动标签，旧任务不能用较旧稳定版覆盖 `latest`。查询失败会在有限重试后终止，绝不当作“版本不存在”。检查、查询或构建暂时失败时，先诊断，再重跑原 workflow。每次只尝试上传一次；上传报错后查询 npm 核对包的完整性。如果结果仍未确认，必须先检查 npm 和运行记录，再决定是否重试。已发布的标签不得移动，版本号不得复用；修正需通过新版本 PR。
+
+保留指向 main 上提交、且与包版本一致的 annotated `vX.Y.Z` tag，作为显式恢复入口；同样执行三平台检查和发布保护，不需要生成 tag 或触发另一个 workflow。预发布版本/tag（如 `v0.2.0-rc.1`）和带构建元数据的版本会跳过发布，目前没有自动预发布通道。包内容验证和恢复细节见 [AGENTS.md](AGENTS.md#npm-releases)。
+
 ## 范围
 
 该工具用于本地学习和调试导出的日志。它不连接运行中的 DSH Agent、不修改会话、不提供实时 tail，也不会把独立子 Agent 日志按时间戳伪造成一条全局因果序列。

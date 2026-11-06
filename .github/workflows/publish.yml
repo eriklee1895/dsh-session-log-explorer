@@ -2,25 +2,54 @@ name: Publish npm package
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  # PRs use ci.yml; main and tag pushes check this exact commit before release.
+  check:
+    if: github.event.deleted == false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Verify release tag
-        run: |
-          expected="v$(node -p "require('./package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            echo "::error title=Release version mismatch::Tag $GITHUB_REF_NAME does not match package.json version $expected"
-            exit 1
-          fi
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  publish:
+    needs: check
+    if: github.repository == 'eriklee1895/dsh-session-log-explorer' && github.event.forced == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: npm-publish-dsh-session-log-explorer
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           version: 11.24.0
@@ -28,7 +57,11 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: pnpm
+          # Release builds do not restore a PR-writable dependency cache.
+      - name: Use an OIDC-capable npm CLI
+        run: npm install --global npm@11.9.0 --registry=https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: npm publish --access public
+      # Keep the publish command in this directly triggered workflow: npm trusts
+      # publish.yml and its calling identity. No environment or token is added.
+      - name: Publish an unused stable version after artifact validation
+        run: node .github/scripts/release.mjs
