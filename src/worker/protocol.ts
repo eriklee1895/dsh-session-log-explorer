@@ -13,10 +13,12 @@ export type ExplorerWorkerRequest =
   | { readonly type: 'conversation'; readonly sessionId: string }
   | { readonly type: 'event'; readonly eventId: string }
   | { readonly type: 'media'; readonly name: string }
+  | { readonly type: 'attachment'; readonly path: string }
 
 export type ExplorerWorkerResponse =
   | { readonly type: 'ready'; readonly view: ExplorerImportView }
   | { readonly type: 'conversation'; readonly sessionId: string; readonly records: readonly ConversationRecord[] }
   | { readonly type: 'event'; readonly eventId: string; readonly event: ExplorerEvent | undefined }
   | { readonly type: 'media'; readonly name: string; readonly bytes: ArrayBuffer | undefined }
+  | { readonly type: 'attachment'; readonly path: string; readonly bytes: ArrayBuffer | undefined }
   | { readonly type: 'error'; readonly message: string }

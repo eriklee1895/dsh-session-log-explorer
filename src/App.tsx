@@ -3,7 +3,7 @@ import type { ConversationRecord } from './model/projection.ts'
 import { ExplorerWorkspace } from './ui/ExplorerWorkspace.tsx'
 import { StructuredJson } from './ui/StructuredJson.tsx'
 import type { ExplorerWorkerRequest, ExplorerWorkerResponse, WorkerFileEntry } from './worker/protocol.ts'
-import type { ExplorerEvent } from './worker/parser.ts'
+import { recordOf, type ExplorerEvent } from './worker/parser.ts'
 import type { ExplorerImportView, ExplorerSessionView } from './worker/session-store.ts'
 import './App.css'
 
@@ -38,9 +38,10 @@ function UploadGlyph(): React.JSX.Element {
 function Inspector({ event }: { readonly event: ExplorerEvent | undefined }): React.JSX.Element {
   const [tab, setTab] = useState<'details' | 'input' | 'output' | 'raw'>('details')
   if (event === undefined) return <aside className="inspector empty"><h2>事件详情</h2><p>从时间线或对话中选择一个事件。</p></aside>
-  const toolInput = typeof event.data.arguments === 'string' ? event.data.arguments : undefined
-  const toolOutput = event.type === 'tool/result' ? JSON.stringify(event.data.message, undefined, 2) : undefined
-  const content = tab === 'details' ? JSON.stringify(event.data, undefined, 2)
+  const data = recordOf(event.data) ?? {}
+  const toolInput = typeof data.arguments === 'string' ? data.arguments : undefined
+  const toolOutput = event.type === 'tool/result' ? JSON.stringify(data.message, undefined, 2) : undefined
+  const content = tab === 'details' ? JSON.stringify({ data: event.data, surfaceOp: event.surfaceOp, sourceEventSeqs: event.sourceEventSeqs, ignorable: event.ignorable }, undefined, 2)
     : tab === 'input' ? toolInput ?? '此事件没有单独记录输入。'
       : tab === 'output' ? toolOutput ?? '此事件没有单独记录输出。'
         : event.rawRecord
@@ -89,6 +90,14 @@ export function App(): React.JSX.Element {
       }
       if (data.type === 'conversation') { setConversation(data.records); return }
       if (data.type === 'event') { setSelectedEventId(data.eventId); setEvent(data.event) }
+      if (data.type === 'attachment' && data.bytes !== undefined) {
+        const url = URL.createObjectURL(new Blob([data.bytes], { type: 'application/octet-stream' }))
+        const link = document.createElement('a')
+        link.href = url
+        link.download = data.path.split('/').at(-1) ?? 'attachment'
+        link.click()
+        setTimeout(() => { URL.revokeObjectURL(url) }, 1_000)
+      }
       if (data.type === 'media' && data.bytes !== undefined) {
         const next = new Map(mediaUrlsRef.current)
         next.set(data.name, URL.createObjectURL(new Blob([data.bytes])))
@@ -143,13 +152,17 @@ export function App(): React.JSX.Element {
         if (event.currentTarget === event.target) setDragging(false)
       }} onDrop={(event) => { event.preventDefault(); setDragging(false); void importFiles([...event.dataTransfer.files]) }} onKeyDown={handleDropzoneKeyDown} role="button" tabIndex={0}><UploadGlyph /><div><strong>拖放会话文件</strong><span>或从本机选择文件</span></div><small>JSONL · JSONL.ZSTD · DSH ZIP</small><span className="file-dropzone-action">{loading ? '正在解析…' : '选择文件'}</span></div>
       <button className="directory-import" onClick={() => { directoryInput.current?.click() }}>选择会话目录</button>
-      <dl className="import-specs"><div><dt>支持格式</dt><dd>JSONL · ZSTD · ZIP</dd></div><div><dt>会话目录</dt><dd>从目录入口选择</dd></div><div><dt>格式版本</dt><dd>DSH SESSION V0</dd></div></dl>
+      <dl className="import-specs"><div><dt>支持格式</dt><dd>JSONL · ZSTD · ZIP</dd></div><div><dt>会话目录</dt><dd>从目录入口选择</dd></div><div><dt>格式版本</dt><dd>DSH SESSION V0–V4</dd></div></dl>
       {error !== undefined && <p className="error" role="alert">{error}</p>}
     </section> : <section className="explorer-layout" style={{ '--inspector-width': `${String(inspectorWidth)}px` } as CSSProperties}>
       <aside className="session-tree"><h2><span>SESSION TREE</span><small>{view.sessions.length} NODES</small></h2>{view.sessions.map(session => <button className={session.id === selected?.id ? 'selected' : ''} key={session.id} onClick={() => { selectSession(session.id) }} style={{ paddingInlineStart: `${String(12 + sessionDepth(session, view.sessions) * 18)}px` }}><strong>{session.id === view.rootSessionId ? 'ROOT SESSION' : 'SUBAGENT'}</strong><span>{session.summary.turns} turns · {session.summary.toolCalls} tools</span></button>)}<p>{view.mediaNames.length} LOCAL MEDIA ATTACHMENTS</p><button className="replace-session" onClick={openFilePicker}>REPLACE SESSION</button></aside>
       <section className="content">{selected !== undefined && <ExplorerWorkspace session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} />}</section>
       <div aria-label="Resize inspector" aria-orientation="vertical" aria-valuemax={INSPECTOR_MAX_WIDTH} aria-valuemin={INSPECTOR_MIN_WIDTH} aria-valuenow={inspectorWidth} className="inspector-resize" onKeyDown={resizeInspectorWithKeyboard} onPointerDown={beginInspectorResize} role="separator" tabIndex={0} />
       <aside className="inspector-rail"><Inspector event={event} />
+        {(view.attachmentNames?.length ?? 0) > 0 && <section className="media-panel">
+          <h2>LOCAL FILES</h2>
+          {view.attachmentNames?.map(path => <button key={path} onClick={() => { post({ type: 'attachment', path }) }}>{path.split('/').at(-1)}</button>)}
+        </section>}
         {(mediaUrls.size > 0 || missingMediaNames.length > 0) && <section className="media-panel">
           <h2>LOCAL MEDIA</h2>
           {[...mediaUrls].map(([name, url]) => <figure key={name}><img src={url} alt={name} /><figcaption>{name}</figcaption></figure>)}

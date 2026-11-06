@@ -14,6 +14,7 @@ function epochReference(ordinal: number): string {
 }
 
 function cardLabel(epoch: PromptEpoch): string {
+  if (epoch.reason === 'series' && epoch.changedFields.length === 0) return 'MESSAGE SERIES STARTED'
   if (epoch.reason === 'initial') return 'INITIAL REQUEST CONTEXT'
   if (epoch.reason === 'resume' && epoch.changedFields.length === 0) return 'SESSION RESUMED · CONTEXT UNCHANGED'
   const changed = new Set(epoch.changedFields)

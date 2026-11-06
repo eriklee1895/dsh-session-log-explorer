@@ -179,7 +179,7 @@ function Conversation({ records, selectedEventId, onEventSelect }: {
   readonly onEventSelect: (eventId: string) => void
 }): React.JSX.Element {
   return <section className="conversation" aria-label="会话记录">
-    {records.map(record => <button className={`conversation-card ${record.kind}${record.eventId === selectedEventId ? ' selected' : ''}`} key={record.eventId} onClick={() => { onEventSelect(record.eventId) }}>
+    {records.map(record => <button className={`conversation-card ${record.kind}${record.eventId === selectedEventId ? ' selected' : ''}`} key={`${record.eventId}:${record.kind}`} onClick={() => { onEventSelect(record.eventId) }}>
       <span>{record.label}</span><p>{record.content}</p>
     </button>)}
   </section>
@@ -236,7 +236,7 @@ function Execution({ epochs, turns, onEventSelect }: {
               }}>VIEW RAW EVENT</button>}</div>
             </details>}
             {step.tools.length > 0 && <ol className="step-tools" aria-label="Tool calls in execution order">{step.tools.map(tool => <li key={tool.eventId}><details className={`execution-tool${tool.failed ? ' failed' : ''}`}>
-              <summary><strong>{tool.name}</strong><span>{preview(tool.output !== '' ? tool.output : tool.input, 120) || '查看工具详情'}</span></summary>
+              <summary><strong>{tool.name}{tool.parentCallId !== undefined ? ' · PTC' : ''}</strong><span>{preview(tool.output !== '' ? tool.output : tool.input, 120) || '查看工具详情'}</span></summary>
               <div className="tool-details">
                 <section><h4>INPUT</h4><StructuredJson value={tool.input} empty="No input parameters were recorded." /></section>
                 <section><h4>{tool.failed ? 'ERROR OUTPUT' : 'RESULT'}</h4><StructuredJson value={tool.output} empty="No model-visible result was recorded." /></section>

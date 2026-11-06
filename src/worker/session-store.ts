@@ -18,6 +18,7 @@ export interface ExplorerImportView {
   readonly sessions: readonly ExplorerSessionView[]
   readonly mediaNames: readonly string[]
   readonly missingMediaNames: readonly string[]
+  readonly attachmentNames?: readonly string[]
 }
 
 function imageReferences(value: unknown, refs: Set<string>): void {
@@ -39,6 +40,7 @@ export class ExplorerSessionStore {
   private readonly events = new Map<string, ExplorerEvent>()
   private readonly conversations = new Map<string, readonly ConversationRecord[]>()
   private readonly mediaObjects = new Map<string, Uint8Array>()
+  private readonly fileObjects = new Map<string, Uint8Array>()
   private current: ExplorerImportView | undefined
 
   async importDirectory(entries: readonly DshDirectoryEntry[]): Promise<ExplorerImportView> {
@@ -66,6 +68,10 @@ export class ExplorerSessionStore {
     return this.mediaObjects.get(name)
   }
 
+  attachment(path: string): Uint8Array | undefined {
+    return this.fileObjects.get(path)
+  }
+
   snapshot(): ExplorerImportView | undefined {
     return this.current
   }
@@ -74,7 +80,9 @@ export class ExplorerSessionStore {
     this.events.clear()
     this.conversations.clear()
     this.mediaObjects.clear()
+    this.fileObjects.clear()
     for (const [name, bytes] of archive.media) this.mediaObjects.set(name, bytes)
+    for (const [path, bytes] of archive.files ?? []) this.fileObjects.set(path, bytes)
     const refs = new Set<string>()
     const sessions = archive.sessions.map((session) => {
       const projection = projectSession(session)
@@ -94,7 +102,7 @@ export class ExplorerSessionStore {
     })
     const mediaNames = [...archive.media.keys()].sort()
     const missingMediaNames = [...refs].filter(id => !mediaNames.some(name => name === id || name.startsWith(`${id}.`))).sort()
-    this.current = { rootSessionId: archive.rootSessionId, sessions, mediaNames, missingMediaNames }
+    this.current = { rootSessionId: archive.rootSessionId, sessions, mediaNames, missingMediaNames, attachmentNames: [...this.fileObjects.keys()].sort() }
     return this.current
   }
 }
