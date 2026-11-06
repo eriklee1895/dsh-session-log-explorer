@@ -11,11 +11,16 @@ import {
 import { StructuredJson } from './StructuredJson.tsx'
 import { PromptEpochReview } from './PromptEpochReview.tsx'
 import { adaptTrajectoryTurns } from './trajectory-adapter.ts'
+import { LazyDetails } from './LazyDetails.tsx'
 import './ExplorerWorkspace.css'
 
 type WorkspaceView = 'overview' | 'execution' | 'timeline' | 'conversation'
 
 export interface ExplorerWorkspaceProps {
+  readonly loading?: boolean
+  readonly onPageChange?: (offset: number) => void
+  readonly conversationPage?: { readonly offset: number; readonly total: number; readonly nextOffset: number }
+  readonly onConversationPageChange?: (offset?: number) => void
   readonly session: ExplorerSessionView
   readonly conversation: readonly ConversationRecord[]
   readonly selectedEventId: string | undefined
@@ -215,50 +220,41 @@ function Execution({ epochs, turns, onEventSelect }: {
   return <section className="execution" aria-label="执行叙事">
     <header className="execution-intro"><span>EXECUTION REVIEW</span><p>{turns.length} turns · {stepCount} steps · reconstructed from recorded agent decisions</p></header>
     <PromptEpochReview epochs={epochs} onEventSelect={onEventSelect} />
-    {turns.map((turn, turnIndex) => <details className="execution-turn" key={turn.id} open={turnIndex === 0}>
-      <summary><span>TURN {String(turn.turn).padStart(2, '0')}</span><small>{turn.steps.length} STEPS</small></summary>
-      {turn.prompt !== undefined && <details className="turn-prompt">
-        <summary><span>USER PROMPT</span><p>{preview(turn.prompt.content, 180)}</p></summary>
-        <div className="detail-body"><p>{turn.prompt.content}</p><button onClick={() => {
+    {turns.map((turn, turnIndex) => <LazyDetails className="execution-turn" key={turn.id} initialOpen={turnIndex === 0} summary={<><span>TURN {String(turn.turn).padStart(2, '0')}</span><small>{turn.steps.length} STEPS</small></>}>{() => <>
+      {turn.prompt !== undefined && <LazyDetails className="turn-prompt" summary={<><span>USER PROMPT</span><p>{preview(turn.prompt.content, 180)}</p></>}>{() => <>
+        <div className="detail-body"><p>{turn.prompt!.content}</p><button onClick={() => {
           const eventId = turn.prompt?.eventId
           if (eventId !== undefined) onEventSelect(eventId)
         }}>VIEW RAW EVENT</button></div>
-      </details>}
+      </>}</LazyDetails>}
       <ol>{turn.steps.map((step, stepIndex) => <li key={step.id}>
-        <details className="execution-step" open={turnIndex === 0 && stepIndex === 0}>
-          <summary><span>STEP {String(step.step).padStart(2, '0')}</span>{step.tools.length > 0 && <em className="step-tool-trail">{step.tools.map(tool => tool.name).join(' → ')}</em>}<small>{step.eventCount.toLocaleString('en-US')} RECORDS · {step.tools.length} TOOLS</small></summary>
-          <div className="step-body">
+        <LazyDetails className="execution-step" initialOpen={turnIndex === 0 && stepIndex === 0} summary={<><span>STEP {String(step.step).padStart(2, '0')}</span>{step.tools.length > 0 && <em className="step-tool-trail">{step.tools.map(tool => tool.name).join(' → ')}</em>}<small>{step.eventCount.toLocaleString('en-US')} RECORDS · {step.tools.length} TOOLS</small></>}>{() => <div className="step-body">
             <StepPromptContext epoch={step.promptEpochEventId === undefined ? undefined : epochById.get(step.promptEpochEventId)} onEventSelect={onEventSelect} />
-            {step.reasoning !== '' && <details className="step-block reasoning">
-              <summary><span>REASONING</span><p>{preview(step.reasoning)}</p></summary>
+            {step.reasoning !== '' && <LazyDetails className="step-block reasoning" summary={<><span>REASONING</span><p>{preview(step.reasoning)}</p></>}>{() => <>
               <div className="detail-body"><p>{step.reasoning}</p>{step.reasoningEventId !== undefined && <button onClick={() => {
                 if (step.reasoningEventId !== undefined) onEventSelect(step.reasoningEventId)
               }}>VIEW RAW EVENT</button>}</div>
-            </details>}
-            {step.tools.length > 0 && <ol className="step-tools" aria-label="Tool calls in execution order">{step.tools.map(tool => <li key={tool.eventId}><details className={`execution-tool${tool.failed ? ' failed' : ''}`}>
-              <summary><strong>{tool.name}{tool.parentCallId !== undefined ? ' · PTC' : ''}</strong><span>{preview(tool.output !== '' ? tool.output : tool.input, 120) || '查看工具详情'}</span></summary>
-              <div className="tool-details">
+            </>}</LazyDetails>}
+            {step.tools.length > 0 && <ol className="step-tools" aria-label="Tool calls in execution order">{step.tools.map(tool => <li key={tool.eventId}><LazyDetails className={`execution-tool${tool.failed ? ' failed' : ''}`} summary={<><strong>{tool.name}{tool.parentCallId !== undefined ? ' · PTC' : ''}</strong><span>{preview(tool.output !== '' ? tool.output : tool.input, 120) || '查看工具详情'}</span></>}>{() => <div className="tool-details">
                 <section><h4>INPUT</h4><StructuredJson value={tool.input} empty="No input parameters were recorded." /></section>
                 <section><h4>{tool.failed ? 'ERROR OUTPUT' : 'RESULT'}</h4><StructuredJson value={tool.output} empty="No model-visible result was recorded." /></section>
                 <button onClick={() => { onEventSelect(tool.eventId) }}>VIEW RAW EVENT</button>
-              </div>
-            </details></li>)}</ol>}
-            {step.assistant !== '' && <details className="step-block assistant">
-              <summary><span>ASSISTANT RESPONSE</span><p>{preview(step.assistant)}</p></summary>
+              </div>}</LazyDetails></li>)}</ol>}
+            {step.assistant !== '' && <LazyDetails className="step-block assistant" summary={<><span>ASSISTANT RESPONSE</span><p>{preview(step.assistant)}</p></>}>{() => <>
               <div className="detail-body"><p>{step.assistant}</p>{step.assistantEventId !== undefined && <button onClick={() => {
                 if (step.assistantEventId !== undefined) onEventSelect(step.assistantEventId)
               }}>VIEW RAW EVENT</button>}</div>
-            </details>}
-          </div>
-        </details>
+            </>}</LazyDetails>}
+          </div>}</LazyDetails>
       </li>)}</ol>
-    </details>)}
+    </>}</LazyDetails>)}
   </section>
 }
 
 /** The three linked Explorer views for one selected DSH session. */
 export function ExplorerWorkspace({
   session,
+  loading = false, onPageChange, conversationPage, onConversationPageChange,
   conversation,
   selectedEventId,
   onEventSelect,
@@ -268,11 +264,23 @@ export function ExplorerWorkspace({
   return <section className="workspace">
     <header className="workspace-toolbar">
       <div className="workspace-readout"><b>会话记录</b><small>{session.eventCount.toLocaleString('zh-CN')} 条事件</small></div>
-      <nav aria-label="工作台视图">{(Object.keys(labels) as WorkspaceView[]).map(key => <button key={key} aria-pressed={view === key} onClick={() => { setView(key) }}>{labels[key]}</button>)}</nav>
+      <nav aria-label="工作台视图">{(Object.keys(labels) as WorkspaceView[]).map(key => <button key={key} aria-pressed={view === key} onClick={() => { setView(key); if (key === 'conversation') onConversationPageChange?.(0) }}>{labels[key]}</button>)}</nav>
     </header>
-    {view === 'overview' && <Overview session={session} />}
+    {loading && <p className="view-loading" role="status"><span className="session-loading-spinner" aria-hidden="true" />正在加载会话视图…</p>}
+    {session.page !== undefined && session.page.total > session.page.count && view !== 'overview' && view !== 'conversation' && <nav className="record-pagination" aria-label="执行记录分页">
+      <button disabled={loading || session.page.offset === 0} onClick={() => { onPageChange?.(Math.max(0, session.page!.offset - 40)) }}>上一页</button>
+      <span>执行记录 {session.page.offset + 1}–{session.page.offset + session.page.count} / {session.page.total}</span>
+      <button disabled={loading || session.page.offset + session.page.count >= session.page.total} onClick={() => { onPageChange?.(session.page!.offset + session.page!.count) }}>下一页</button>
+    </nav>}
+    {view === 'conversation' && conversationPage !== undefined && conversationPage.total > 0 && <nav className="record-pagination" aria-label="对话记录分页">
+      <button disabled={loading || conversationPage.offset === 0} onClick={() => { onConversationPageChange?.(Math.max(0, conversationPage.offset - 100)) }}>较早记录</button>
+      <span>对话记录 {conversationPage.offset + 1}–{conversationPage.nextOffset} / {conversationPage.total}</span>
+      <button disabled={loading || conversationPage.nextOffset >= conversationPage.total} onClick={() => { onConversationPageChange?.(conversationPage.nextOffset) }}>较新记录</button>
+    </nav>}
+    {view === 'overview'  && <Overview session={session} />}
     {view === 'execution' && <Execution epochs={session.promptEpochs} turns={session.execution} onEventSelect={onEventSelect} />}
-    {view === 'timeline' && <Timeline items={session.timeline} onEventSelect={onEventSelect} selectedEventId={selectedEventId} turns={session.execution} />}
+    {view === 'timeline' && session.page !== undefined && session.page.total > session.page.count && <p className="view-loading">时间线展示当前页的执行记录，可切换页码查看其余记录。</p>}
+    {view === 'timeline' && <Timeline key={session.page?.offset ?? 0} items={session.timeline} onEventSelect={onEventSelect} selectedEventId={selectedEventId} turns={session.execution} />}
     {view === 'conversation' && <Conversation records={conversation} selectedEventId={selectedEventId} onEventSelect={onEventSelect} />}
   </section>
 }

@@ -1,10 +1,9 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
-import type { ConversationRecord } from './model/projection.ts'
+import { type CSSProperties, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useSessionLoader } from './useSessionLoader.ts'
 import { ExplorerWorkspace } from './ui/ExplorerWorkspace.tsx'
 import { StructuredJson } from './ui/StructuredJson.tsx'
-import type { ExplorerWorkerRequest, ExplorerWorkerResponse, WorkerFileEntry } from './worker/protocol.ts'
 import { recordOf, type ExplorerEvent } from './worker/parser.ts'
-import type { ExplorerImportView, ExplorerSessionView } from './worker/session-store.ts'
+import type { ExplorerSessionView } from './worker/session-store.ts'
 import './App.css'
 
 function formatTime(time: number): string {
@@ -59,60 +58,30 @@ function Inspector({ event }: { readonly event: ExplorerEvent | undefined }): Re
 
 /** Standalone browser shell for reviewing locally selected DSH session artifacts. */
 export function App(): React.JSX.Element {
-  const worker = useRef<Worker | null>(null)
   const fileInput = useRef<HTMLInputElement | null>(null)
   const directoryInput = useRef<HTMLInputElement | null>(null)
-  const [view, setView] = useState<ExplorerImportView>()
-  const [sessionId, setSessionId] = useState<string>()
-  const [conversation, setConversation] = useState<readonly ConversationRecord[]>([])
-  const [event, setEvent] = useState<ExplorerEvent>()
-  const [selectedEventId, setSelectedEventId] = useState<string>()
-  const [error, setError] = useState<string>()
-  const [loading, setLoading] = useState(false)
+  const content = useRef<HTMLDivElement | null>(null)
+  const cancelButton = useRef<HTMLButtonElement | null>(null)
+  const previousFocus = useRef<HTMLElement | null>(null)
+  const { view, revision, sessionId, conversation, conversationPage, event, selectedEventId, error, notice, loading, viewLoading,
+    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post } = useSessionLoader()
   const [isDragging, setDragging] = useState(false)
   const [inspectorWidth, setInspectorWidth] = useState(400)
-  const [mediaUrls, setMediaUrls] = useState<ReadonlyMap<string, string>>(new Map())
-  const mediaUrlsRef = useRef<ReadonlyMap<string, string>>(new Map())
-
-  const post = (message: ExplorerWorkerRequest, transfer: Transferable[] = []): void => { worker.current?.postMessage(message, transfer) }
-  useEffect(() => {
-    const instance = new Worker(new URL('./worker/session.worker.ts', import.meta.url), { type: 'module' })
-    worker.current = instance
-    instance.onmessage = ({ data }: MessageEvent<ExplorerWorkerResponse>) => {
-      if (data.type === 'error') { setLoading(false); setError(data.message); return }
-      if (data.type === 'ready') {
-        for (const url of mediaUrlsRef.current.values()) URL.revokeObjectURL(url)
-        mediaUrlsRef.current = new Map()
-        setMediaUrls(mediaUrlsRef.current)
-        setLoading(false); setError(undefined); setView(data.view); setSessionId(data.view.rootSessionId); post({ type: 'conversation', sessionId: data.view.rootSessionId })
-        for (const name of data.view.mediaNames) post({ type: 'media', name })
-        return
-      }
-      if (data.type === 'conversation') { setConversation(data.records); return }
-      if (data.type === 'event') { setSelectedEventId(data.eventId); setEvent(data.event) }
-      if (data.type === 'attachment' && data.bytes !== undefined) {
-        const url = URL.createObjectURL(new Blob([data.bytes], { type: 'application/octet-stream' }))
-        const link = document.createElement('a')
-        link.href = url
-        link.download = data.path.split('/').at(-1) ?? 'attachment'
-        link.click()
-        setTimeout(() => { URL.revokeObjectURL(url) }, 1_000)
-      }
-      if (data.type === 'media' && data.bytes !== undefined) {
-        const next = new Map(mediaUrlsRef.current)
-        next.set(data.name, URL.createObjectURL(new Blob([data.bytes])))
-        mediaUrlsRef.current = next
-        setMediaUrls(next)
-      }
+  const isLoading = loading !== undefined
+  useLayoutEffect(() => {
+    content.current?.toggleAttribute('inert', isLoading)
+    if (isLoading) {
+      previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      cancelButton.current?.focus()
+    } else if (previousFocus.current !== null) {
+      const target = previousFocus.current.isConnected && previousFocus.current !== document.body ? previousFocus.current
+        : content.current?.querySelector<HTMLElement>('.session-tree button.selected, .file-dropzone')
+      target?.focus(); previousFocus.current = null
     }
-    return () => { instance.terminate(); for (const url of mediaUrlsRef.current.values()) URL.revokeObjectURL(url); worker.current = null }
-  }, [])
-
+  }, [isLoading])
   const selected = useMemo(() => view?.sessions.find(session => session.id === sessionId), [view, sessionId])
   const missingMediaNames = view?.missingMediaNames ?? []
-  const selectSession = (id: string): void => { setSessionId(id); setEvent(undefined); setSelectedEventId(undefined); post({ type: 'conversation', sessionId: id }) }
-  const selectEvent = (eventId: string): void => { setSelectedEventId(eventId); post({ type: 'event', eventId }) }
-  const openFilePicker = (): void => { fileInput.current?.click() }
+  const openFilePicker = (): void => { if (!isLoading) fileInput.current?.click() }
   const setInspectorWidthFromPointer = (clientX: number): void => { setInspectorWidth(clampInspectorWidth(window.innerWidth - clientX)) }
   const beginInspectorResize = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -131,32 +100,23 @@ export function App(): React.JSX.Element {
   const handleDropzoneKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openFilePicker() }
   }
-  const importFiles = async (files: readonly File[]): Promise<void> => {
-    setLoading(true); setError(undefined); setEvent(undefined); setSelectedEventId(undefined)
-    const entries = await Promise.all(files.map(async (file): Promise<WorkerFileEntry> => ({
-      name: file.name,
-      path: file.webkitRelativePath || file.name,
-      bytes: await file.arrayBuffer(),
-    })))
-    post({ type: 'import', entries }, entries.map(entry => entry.bytes))
-  }
 
   return <main className="app-shell">
+    <div ref={content}>
     <header className="app-header import-header"><strong><img aria-hidden="true" className="brand-mark" src="/favicon.svg" />DSH Session Log Explorer</strong><span>Offline DeepSeek Harness Session Viewer</span></header>
-    <input ref={fileInput} className="visually-hidden" type="file" accept=".jsonl,.zstd,.zip" multiple onChange={(event) => { void importFiles([...event.currentTarget.files ?? []]) }} />
-    <input ref={(node) => { directoryInput.current = node; node?.setAttribute('webkitdirectory', '') }} className="visually-hidden" type="file" multiple onChange={(event) => { void importFiles([...event.currentTarget.files ?? []]) }} />
+    <input ref={fileInput} className="visually-hidden" type="file" accept=".jsonl,.zstd,.zip" multiple disabled={isLoading} onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; importFiles(files) }} />
+    <input ref={(node) => { directoryInput.current = node; node?.setAttribute('webkitdirectory', '') }} className="visually-hidden" type="file" multiple disabled={isLoading} onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; importFiles(files) }} />
     {view === undefined ? <section className="import-panel" aria-label="本地会话拖放区">
       <div className="import-kicker"><span>IMPORT SESSION</span></div>
       <h1>导入 DSH 会话日志</h1><p>将会话文件拖入下方区域。解析在浏览器 Worker 内完成，不会上传任何内容。</p>
-      <div aria-busy={loading} aria-label="导入会话文件" className={`file-dropzone${isDragging ? ' is-dragging' : ''}`} onClick={openFilePicker} onDragEnter={(event) => { event.preventDefault(); setDragging(true) }} onDragOver={(event) => { event.preventDefault() }} onDragLeave={(event) => {
+      <div aria-busy={isLoading} aria-disabled={isLoading} aria-label="导入会话文件" className={`file-dropzone${isDragging ? ' is-dragging' : ''}`} onClick={openFilePicker} onDragEnter={(event) => { event.preventDefault(); if (!isLoading) setDragging(true) }} onDragOver={(event) => { event.preventDefault() }} onDragLeave={(event) => {
         if (event.currentTarget === event.target) setDragging(false)
-      }} onDrop={(event) => { event.preventDefault(); setDragging(false); void importFiles([...event.dataTransfer.files]) }} onKeyDown={handleDropzoneKeyDown} role="button" tabIndex={0}><UploadGlyph /><div><strong>拖放会话文件</strong><span>或从本机选择文件</span></div><small>JSONL · JSONL.ZSTD · DSH ZIP</small><span className="file-dropzone-action">{loading ? '正在解析…' : '选择文件'}</span></div>
-      <button className="directory-import" onClick={() => { directoryInput.current?.click() }}>选择会话目录</button>
+      }} onDrop={(event) => { event.preventDefault(); setDragging(false); void importFiles([...event.dataTransfer.files]) }} onKeyDown={handleDropzoneKeyDown} role="button" tabIndex={0}><UploadGlyph /><div><strong>拖放会话文件</strong><span>或从本机选择文件</span></div><small>JSONL · JSONL.ZSTD · DSH ZIP</small><span className="file-dropzone-action">{isLoading ? '正在加载…' : '选择文件'}</span></div>
+      <button className="directory-import" disabled={isLoading} onClick={() => { directoryInput.current?.click() }}>选择会话目录</button>
       <dl className="import-specs"><div><dt>支持格式</dt><dd>JSONL · ZSTD · ZIP</dd></div><div><dt>会话目录</dt><dd>从目录入口选择</dd></div><div><dt>格式版本</dt><dd>DSH SESSION V0–V4</dd></div></dl>
-      {error !== undefined && <p className="error" role="alert">{error}</p>}
     </section> : <section className="explorer-layout" style={{ '--inspector-width': `${String(inspectorWidth)}px` } as CSSProperties}>
-      <aside className="session-tree"><h2><span>SESSION TREE</span><small>{view.sessions.length} NODES</small></h2>{view.sessions.map(session => <button className={session.id === selected?.id ? 'selected' : ''} key={session.id} onClick={() => { selectSession(session.id) }} style={{ paddingInlineStart: `${String(12 + sessionDepth(session, view.sessions) * 18)}px` }}><strong>{session.id === view.rootSessionId ? 'ROOT SESSION' : 'SUBAGENT'}</strong><span>{session.summary.turns} turns · {session.summary.toolCalls} tools</span></button>)}<p>{view.mediaNames.length} LOCAL MEDIA ATTACHMENTS</p><button className="replace-session" onClick={openFilePicker}>REPLACE SESSION</button></aside>
-      <section className="content">{selected !== undefined && <ExplorerWorkspace session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} />}</section>
+      <aside className="session-tree"><h2><span>SESSION TREE</span><small>{view.sessions.length} NODES</small></h2>{view.sessions.map(session => <button className={session.id === selected?.id ? 'selected' : ''} key={session.id} onClick={() => { selectSession(session.id) }} style={{ paddingInlineStart: `${String(12 + sessionDepth(session, view.sessions) * 18)}px` }}><strong>{session.id === view.rootSessionId ? 'ROOT SESSION' : 'SUBAGENT'}</strong><span>{session.summary.turns} turns · {session.summary.toolCalls} tools</span></button>)}<p>{view.mediaNames.length} LOCAL MEDIA ATTACHMENTS</p><button className="replace-session" disabled={isLoading} onClick={openFilePicker}>REPLACE SESSION</button></aside>
+      <section className="content">{selected !== undefined && <ExplorerWorkspace key={`${revision}:${selected.id}`} loading={viewLoading} onPageChange={requestPage} conversationPage={conversationPage} onConversationPageChange={requestConversation} session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} />}</section>
       <div aria-label="Resize inspector" aria-orientation="vertical" aria-valuemax={INSPECTOR_MAX_WIDTH} aria-valuemin={INSPECTOR_MIN_WIDTH} aria-valuenow={inspectorWidth} className="inspector-resize" onKeyDown={resizeInspectorWithKeyboard} onPointerDown={beginInspectorResize} role="separator" tabIndex={0} />
       <aside className="inspector-rail"><Inspector event={event} />
         {(view.attachmentNames?.length ?? 0) > 0 && <section className="media-panel">
@@ -169,6 +129,23 @@ export function App(): React.JSX.Element {
           {missingMediaNames.map(name => <p className="missing-media" key={name}>缺少媒体：{name}</p>)}
         </section>}
       </aside>
+    </section>}
+    {error !== undefined && <p className="error import-feedback" role="alert">{error}</p>}
+    {notice !== undefined && <p className="import-feedback" role="status">{notice}</p>}
+    </div>
+    {loading !== undefined && <section className="session-loading-backdrop" role="dialog" aria-modal="true" aria-labelledby="session-loading-title" onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); cancelImport() }
+      if (event.key === 'Tab') { event.preventDefault(); cancelButton.current?.focus() }
+    }}>
+      <div className="session-loading-card">
+        <span className="session-loading-spinner" aria-hidden="true" />
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <h2 id="session-loading-title">{loading.replacing ? '正在替换会话' : '正在加载会话'}</h2>
+          <p>{{ reading: '正在读取文件…', extracting: '正在解压文件…', parsing: '正在解析会话…', projecting: '正在整理执行记录…', rendering: '正在准备会话视图…' }[loading.phase]}</p>
+        </div>
+        <p className="session-loading-note">大文件可能需要一些时间。所有内容始终留在本机。</p>
+        <button ref={cancelButton} onClick={cancelImport}>取消加载</button>
+      </div>
     </section>}
   </main>
 }

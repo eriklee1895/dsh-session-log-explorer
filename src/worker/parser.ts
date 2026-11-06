@@ -124,41 +124,61 @@ function eventOf(value: unknown, storageLine: number, rawRecord: string, expecte
   }
 }
 
-/** Read V0–V4 without migrating or renumbering durable events. */
-export function parseSessionJsonl(text: string): ParsedSessionJsonl {
-  const lines = text.split('\n')
-  const first = lines[0]
-  if (first === undefined || first === '') throw new Error('first line must be a DSH session header')
-  let headerValue: unknown
-  try {
-    headerValue = JSON.parse(first)
-  } catch {
-    throw new Error('first line must be a DSH session header')
-  }
-  const header = parseHeader(headerValue)
-  const events: ExplorerEvent[] = []
-  let expectedSeq = 0
-  for (let index = 1; index < lines.length; index++) {
-    const rawRecord = lines[index]
-    if (rawRecord === undefined || rawRecord === '') continue
-    const storageLine = index + 1
-    let stored: unknown
-    try {
-      stored = JSON.parse(rawRecord)
-    } catch {
-      throw new Error(`line ${String(storageLine)} is not valid JSON`)
+/** Incrementally accepts complete storage lines without retaining a second split-line array. */
+class SessionJsonlReader {
+  private header: ExplorerSessionHeader | undefined
+  private readonly events: ExplorerEvent[] = []
+  private storageLine = 0
+
+  line(rawRecord: string, readRaw?: () => string): void {
+    this.storageLine++
+    if (this.storageLine === 1) {
+      let value: unknown
+      try { value = JSON.parse(rawRecord) } catch { throw new Error('first line must be a DSH session header') }
+      this.header = parseHeader(value)
+      return
     }
+    if (rawRecord === '' || rawRecord === '\r') return
+    let stored: unknown
+    try { stored = JSON.parse(rawRecord) } catch { throw new Error(`line ${this.storageLine} is not valid JSON`) }
     let expanded: readonly unknown[]
-    try {
-      expanded = decodeStorageRecord(stored)
-    } catch (error: unknown) {
-      throw new Error(`line ${String(storageLine)} cannot decode: ${error instanceof Error ? error.message : String(error)}`)
+    try { expanded = decodeStorageRecord(stored) } catch (error) {
+      throw new Error(`line ${this.storageLine} cannot decode: ${error instanceof Error ? error.message : String(error)}`)
     }
     for (const decoded of expanded) {
-      const event = eventOf(decoded, storageLine, rawRecord, expectedSeq)
-      events.push(event)
-      expectedSeq++
+      const event = eventOf(decoded, this.storageLine, rawRecord, this.events.length)
+      if (readRaw !== undefined) Object.defineProperty(event, 'rawRecord', { get: readRaw, enumerable: true })
+      this.events.push(event)
     }
   }
-  return { header, events }
+
+  finish(): ParsedSessionJsonl {
+    if (this.header === undefined) throw new Error('first line must be a DSH session header')
+    return { header: this.header, events: this.events }
+  }
+}
+
+/** Read V0–V4 without migrating or renumbering durable events. */
+export function parseSessionJsonl(text: string): ParsedSessionJsonl {
+  const reader = new SessionJsonlReader()
+  let start = 0
+  let end: number
+  while ((end = text.indexOf('\n', start)) >= 0) { reader.line(text.slice(start, end)); start = end + 1 }
+  if (start < text.length || text.length === 0) reader.line(text.slice(start))
+  return reader.finish()
+}
+
+/** Decode one UTF-8 storage line at a time; retain immutable source bytes for on-demand raw inspection. */
+export function parseSessionJsonlBytes(bytes: Uint8Array): ParsedSessionJsonl {
+  const reader = new SessionJsonlReader()
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
+  let start = 0
+  const line = (from: number, to: number): void => {
+    const readRaw = (): string => decoder.decode(bytes.subarray(from, to))
+    reader.line(readRaw(), readRaw)
+  }
+  let end: number
+  while ((end = bytes.indexOf(10, start)) >= 0) { line(start, end); start = end + 1 }
+  if (start < bytes.length || bytes.length === 0) line(start, bytes.length)
+  return reader.finish()
 }

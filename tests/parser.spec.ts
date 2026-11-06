@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSessionJsonl } from '../src/worker/parser.ts'
+import { parseSessionJsonl, parseSessionJsonlBytes } from '../src/worker/parser.ts'
 
 const header = {
   type: 'session',
@@ -10,6 +10,13 @@ const header = {
 }
 
 describe('parseSessionJsonl', () => {
+  it('reads large UTF-8 lines without changing raw records or storage positions', () => {
+    const content = 'x'.repeat(262_000) + '中文🌍'.repeat(60)
+    const row = JSON.stringify({ type: 'user/message', seq: 0, time: 1, data: { content } })
+    const text = `${JSON.stringify(header)}\r\n\r\n${row}\r\n`
+    expect(parseSessionJsonlBytes(new TextEncoder().encode(text))).toEqual(parseSessionJsonl(text))
+    expect(parseSessionJsonlBytes(new TextEncoder().encode(text)).events[0]).toMatchObject({ storageLine: 3, rawRecord: `${row}\r` })
+  })
   it('expands packed reasoning chunks into their contiguous logical events', () => {
     const result = parseSessionJsonl([
       JSON.stringify(header),

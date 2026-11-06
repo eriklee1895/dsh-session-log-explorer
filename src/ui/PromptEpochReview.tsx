@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import type { PromptEpoch } from '../model/projection.ts'
 import { promptEpochLabel } from '../model/projection.ts'
 import { StructuredJson } from './StructuredJson.tsx'
+import { LazyDetails } from './LazyDetails.tsx'
 import './PromptEpochReview.css'
 
 function epochCode(ordinal: number): string {
@@ -72,15 +73,13 @@ export function PromptEpochReview({ epochs, onEventSelect }: {
     <ol>{epochs.map((epoch) => {
       const previous = epoch.previousEventId === undefined ? undefined : byId.get(epoch.previousEventId)
       const unchangedResume = epoch.reason === 'resume' && epoch.changedFields.length === 0
-      return <li key={epoch.eventId}><details className={`prompt-epoch ${epoch.reason}${unchangedResume ? ' unchanged' : ''}`}>
-        <summary>
+      return <li key={epoch.eventId}><LazyDetails className={`prompt-epoch ${epoch.reason}${unchangedResume ? ' unchanged' : ''}`} summary={<>
           <span className="prompt-epoch-index">{epochCode(epoch.ordinal)}</span>
           <div className="prompt-epoch-title"><strong>{cardLabel(epoch)}</strong><p>{unchangedResume
             ? `SYSTEM PROMPT, MODEL, AND TOOLS UNCHANGED FROM ${previous === undefined ? 'THE PREVIOUS SNAPSHOT' : epochCode(previous.ordinal)}`
             : epoch.system.replaceAll(/\s+/g, ' ').trim().slice(0, 170) || 'No rendered system prompt'}</p></div>
           <div className="prompt-epoch-meta"><span>{modelName(epoch)}</span><span>{epoch.toolNames.length} {epoch.toolNames.length === 1 ? 'TOOL' : 'TOOLS'}</span></div>
-        </summary>
-        <div className="prompt-epoch-body">
+        </>}>{() => <div className="prompt-epoch-body">
           {unchangedResume ? <p className="prompt-resume-note">The Agent loop resumed with the same model-visible system prompt, model configuration, and tool catalog.</p>
             : <section className="prompt-document">
               <header><h3>{previous === undefined || previous.system === epoch.system ? 'RENDERED SYSTEM PROMPT' : 'SYSTEM PROMPT DIFF'}</h3><small>{epoch.system.length.toLocaleString('en-US')} CHARACTERS</small></header>
@@ -93,8 +92,7 @@ export function PromptEpochReview({ epochs, onEventSelect }: {
             <details className="prompt-tools"><summary>TOOLS <span>{epoch.toolNames.length}</span></summary><ToolList current={epoch.toolNames} previous={previous?.toolNames ?? []} /></details>
           </aside>}
           <button aria-label={`View raw request header ${epochReference(epoch.ordinal)}`} className="prompt-raw-event" onClick={() => { onEventSelect(epoch.eventId) }}>VIEW RAW REQUEST HEADER</button>
-        </div>
-      </details></li>
+        </div>}</LazyDetails></li>
     })}</ol>
   </section>
 }

@@ -68,11 +68,23 @@ describe('ExplorerWorkspace', () => {
     expect(screen.getByText('ASSISTANT RESPONSE').closest('details')?.open).toBe(false)
     const tool = screen.getByText('bash').closest('details')
     expect(tool?.open).toBe(false)
+    expect(screen.queryByText('command:', { exact: true })).toBeNull()
     fireEvent.click(screen.getByText('bash'))
     expect(screen.getByText('command:', { exact: true })).toBeTruthy()
     expect(screen.getByText('path:', { exact: true })).toBeTruthy()
     fireEvent.click(within(tool as HTMLElement).getByRole('button', { name: 'VIEW RAW EVENT' }))
     expect(selected).toEqual(['root:2'])
+  })
+
+  it('requests another execution window without rendering closed steps or changing event identity', () => {
+    const offsets: number[] = []
+    render(<ExplorerWorkspace session={{ ...session, page: { offset: 0, count: 40, total: 105 } }}
+      conversation={[]} selectedEventId={undefined} onEventSelect={() => {}}
+      onPageChange={offset => { offsets.push(offset) }} />)
+    const pages = within(screen.getByRole('navigation', { name: '执行记录分页' }))
+    expect((pages.getByRole('button', { name: '上一页' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(pages.getByRole('button', { name: '下一页' }))
+    expect(offsets).toEqual([40])
   })
 
   it('links the agent trajectory overview to its event ledger', () => {
