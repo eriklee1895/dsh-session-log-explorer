@@ -19,6 +19,22 @@ function artifactWithMissingImage(): Uint8Array {
 }
 
 describe('ExplorerSessionStore', () => {
+  it('sends bounded execution and conversation windows while preserving every raw event in the store', async () => {
+    const rows: unknown[] = [{ type: 'session', version: 4, id: 'large', createdAt: 1, delegationDepth: 0, isSeeded: false }]
+    let seq = 0
+    for (let step = 1; step <= 105; step++) {
+      rows.push({ type: 'step/start', seq: seq++, time: step, data: { turn: 1, step } })
+      rows.push({ type: 'assistant/message', seq: seq++, time: step, data: { turn: 1, step, message: { content: [{ type: 'text', text: `response-${step}` }] }, stream: [] } })
+    }
+    const store = new ExplorerSessionStore()
+    await store.importFile({ name: 'session.v4.jsonl', bytes: encoder.encode(rows.map(row => JSON.stringify(row)).join('\n')) })
+    expect(store.initialView()?.sessions[0]?.execution[0]?.steps).toHaveLength(40)
+    expect(store.sessionPage('large', 40)?.execution[0]?.steps[0]?.step).toBe(41)
+    expect(store.sessionPage('large', 80)?.execution[0]?.steps).toHaveLength(25)
+    expect(store.conversationPage('large').records).toHaveLength(100)
+    expect(store.conversationPage('large', 100)).toMatchObject({ total: 105, nextOffset: 105 })
+    expect(store.event('large:209')?.seq).toBe(209)
+  })
   it('keeps session content private until an event detail is requested', async () => {
     const store = new ExplorerSessionStore()
     const view = await store.importDirectory([

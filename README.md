@@ -59,6 +59,8 @@ Files are parsed in a browser Worker and remain in the current browser tab. The 
 
 The parser reads session formats **V0–V4**, including legacy packed chunks and current embedded timed streams. It preserves raw events, handles V3 system-message replacements and V4 tool results, and keeps media and file attachments local. Directory and ZIP imports select the numerically highest generation per session and reject unsupported newer generations without silently falling back. See [Compatibility checks](docs/compatibility.md) for the pinned upstream version, test coverage and limits.
 
+Loading and Replace Session show progress states and a cancel button; failed or cancelled replacements preserve the current session. Large execution, timeline and conversation views use bounded pages and load detail bodies when expanded. See [Loading performance](docs/loading-performance.md) for measurements and memory limits.
+
 ## Develop locally
 
 Requires Node.js 20+ and pnpm.

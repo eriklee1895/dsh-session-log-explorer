@@ -1,6 +1,9 @@
-import { strFromU8, unzipSync } from 'fflate'
+import { unzipSync } from 'fflate'
 import { decompress } from 'fzstd'
-import { parseSessionJsonl, recordOf, type ParsedSessionJsonl } from './parser.ts'
+import { parseSessionJsonlBytes, recordOf, type ParsedSessionJsonl } from './parser.ts'
+import type { ImportPhase } from './protocol.ts'
+
+export type ImportProgress = (phase: ImportPhase) => void
 
 export interface DshArchiveInput {
   readonly name: string
@@ -41,9 +44,14 @@ async function decompressZstd(bytes: Uint8Array): Promise<Uint8Array> {
 }
 
 /** Parse one standalone plaintext or Zstandard-compressed DSH session artifact. */
-export async function importDshFile(input: DshArchiveInput): Promise<ParsedSessionJsonl> {
-  if (input.name.endsWith('.jsonl')) return parseSessionJsonl(strFromU8(input.bytes))
-  if (input.name.endsWith('.jsonl.zstd')) return parseSessionJsonl(strFromU8(await decompressZstd(input.bytes)))
+export async function importDshFile(input: DshArchiveInput, progress?: ImportProgress): Promise<ParsedSessionJsonl> {
+  if (input.name.endsWith('.jsonl')) { progress?.('parsing'); return parseSessionJsonlBytes(input.bytes) }
+  if (input.name.endsWith('.jsonl.zstd')) {
+    progress?.('extracting')
+    const bytes = await decompressZstd(input.bytes)
+    progress?.('parsing')
+    return parseSessionJsonlBytes(bytes)
+  }
   throw new Error(`unsupported session artifact ${JSON.stringify(input.name)}`)
 }
 
@@ -89,7 +97,7 @@ function sessionPaths(entries: readonly DshDirectoryEntry[]): readonly string[] 
   return [root, ...[...selected.entries()].filter(([folder]) => folder !== '').map(([, path]) => path).sort()]
 }
 
-async function importEntries(input: readonly DshDirectoryEntry[]): Promise<ImportedDshArchive> {
+async function importEntries(input: readonly DshDirectoryEntry[], progress?: ImportProgress): Promise<ImportedDshArchive> {
   const entries = normalizedEntries(input)
   const byPath = new Map(entries.map(entry => [entry.path, entry] as const))
   const sessions: ImportedSession[] = []
@@ -99,7 +107,7 @@ async function importEntries(input: readonly DshDirectoryEntry[]): Promise<Impor
     if (source === undefined) throw new Error(`session artifact ${JSON.stringify(sourcePath)} is missing`)
     let parsed: ParsedSessionJsonl
     try {
-      parsed = await importDshFile(source)
+      parsed = await importDshFile(source, progress)
       if (parsed.header.version !== generation(sourcePath)) throw new Error('filename generation does not match session header version')
     } catch (error: unknown) {
       throw new Error(`cannot parse ${JSON.stringify(sourcePath)}: ${error instanceof Error ? error.message : String(error)}`)
@@ -141,17 +149,18 @@ async function importEntries(input: readonly DshDirectoryEntry[]): Promise<Impor
 }
 
 /** Decode one ZIP made by DSH's session-log exporter without writing imported bytes. */
-export async function importDshArchive(input: DshArchiveInput): Promise<ImportedDshArchive> {
+export async function importDshArchive(input: DshArchiveInput, progress?: ImportProgress): Promise<ImportedDshArchive> {
   let entries: Record<string, Uint8Array>
   try {
+    progress?.('extracting')
     entries = unzipSync(input.bytes)
   } catch (error: unknown) {
     throw new Error(`cannot read ZIP ${JSON.stringify(input.name)}: ${error instanceof Error ? error.message : String(error)}`)
   }
-  return importEntries(Object.entries(entries).map(([path, bytes]) => ({ path, name: path.split('/').at(-1) ?? path, bytes })))
+  return importEntries(Object.entries(entries).map(([path, bytes]) => ({ path, name: path.split('/').at(-1) ?? path, bytes })), progress)
 }
 
 /** Parse a user-selected DSH directory with optional descendant and media files. */
-export async function importDshDirectory(entries: readonly DshDirectoryEntry[]): Promise<ImportedDshArchive> {
-  return importEntries(entries)
+export async function importDshDirectory(entries: readonly DshDirectoryEntry[], progress?: ImportProgress): Promise<ImportedDshArchive> {
+  return importEntries(entries, progress)
 }

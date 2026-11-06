@@ -46,7 +46,8 @@ describe('import panel', () => {
 
   it('renders inspector inputs as structured JSON and exposes a resize separator', () => {
     vi.stubGlobal('Worker', WorkerStub)
-    render(<App />)
+    const { container } = render(<App />)
+    fireEvent.change(container.querySelector('input[type=file]')!, { target: { files: [new File(['{}'], 'session.jsonl')] } })
     const worker = WorkerStub.latest
     if (worker === undefined) throw new Error('worker was not created')
     const session = {

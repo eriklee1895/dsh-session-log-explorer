@@ -1,6 +1,6 @@
 import { projectSession, type ConversationRecord, type ExecutionTurn, type PromptEpoch, type SessionSummary, type TimelineItem } from '../model/projection.ts'
 import type { ExplorerEvent } from './parser.ts'
-import { importDshArchive, importDshDirectory, importDshFile, type DshArchiveInput, type DshDirectoryEntry, type ImportedDshArchive } from './importer.ts'
+import { importDshArchive, importDshDirectory, importDshFile, type DshArchiveInput, type DshDirectoryEntry, type ImportedDshArchive, type ImportProgress } from './importer.ts'
 
 export interface ExplorerSessionView {
   readonly id: string
@@ -11,6 +11,7 @@ export interface ExplorerSessionView {
   readonly timeline: readonly TimelineItem[]
   readonly execution: readonly ExecutionTurn[]
   readonly promptEpochs: readonly PromptEpoch[]
+  readonly page?: { readonly offset: number; readonly count: number; readonly total: number }
 }
 
 export interface ExplorerImportView {
@@ -43,17 +44,17 @@ export class ExplorerSessionStore {
   private readonly fileObjects = new Map<string, Uint8Array>()
   private current: ExplorerImportView | undefined
 
-  async importDirectory(entries: readonly DshDirectoryEntry[]): Promise<ExplorerImportView> {
-    return this.setArchive(await importDshDirectory(entries))
+  async importDirectory(entries: readonly DshDirectoryEntry[], progress?: ImportProgress): Promise<ExplorerImportView> {
+    return this.setArchive(await importDshDirectory(entries, progress), progress)
   }
 
-  async importArchive(input: DshArchiveInput): Promise<ExplorerImportView> {
-    return this.setArchive(await importDshArchive(input))
+  async importArchive(input: DshArchiveInput, progress?: ImportProgress): Promise<ExplorerImportView> {
+    return this.setArchive(await importDshArchive(input, progress), progress)
   }
 
-  async importFile(input: DshArchiveInput): Promise<ExplorerImportView> {
-    const parsed = await importDshFile(input)
-    return this.setArchive({ rootSessionId: parsed.header.id, sessions: [{ ...parsed, sourcePath: input.name }], media: new Map() })
+  async importFile(input: DshArchiveInput, progress?: ImportProgress): Promise<ExplorerImportView> {
+    const parsed = await importDshFile(input, progress)
+    return this.setArchive({ rootSessionId: parsed.header.id, sessions: [{ ...parsed, sourcePath: input.name }], media: new Map() }, progress)
   }
 
   event(id: string): ExplorerEvent | undefined {
@@ -76,7 +77,64 @@ export class ExplorerSessionStore {
     return this.current
   }
 
-  private setArchive(archive: ImportedDshArchive): ExplorerImportView {
+  /** Transfer a bounded execution window; full events and projections stay in the Worker. */
+  sessionPage(sessionId: string, offset = 0): ExplorerSessionView | undefined {
+    const session = this.current?.sessions.find(value => value.id === sessionId)
+    if (session === undefined) return undefined
+    const total = session.execution.reduce((count, turn) => count + Math.max(1, turn.steps.length), 0)
+    const start = Math.max(0, Math.min(Math.floor(offset), Math.max(0, total - 1)))
+    const end = start + 40
+    const execution: ExecutionTurn[] = []
+    const ids = new Set<string>()
+    let position = 0
+    for (const turn of session.execution) {
+      const count = Math.max(1, turn.steps.length)
+      const steps = turn.steps.slice(Math.max(0, start - position), Math.max(0, end - position))
+      if (position < end && position + count > start) {
+        const epochs = turn.promptEpochs.filter(epoch => epoch.step === undefined || steps.some(step => step.step === epoch.step))
+        execution.push({ ...turn, steps, promptEpochs: epochs })
+        if (turn.prompt !== undefined) ids.add(turn.prompt.eventId)
+        for (const epoch of epochs) ids.add(epoch.eventId)
+        for (const step of steps) {
+          if (step.reasoningEventId !== undefined) ids.add(step.reasoningEventId)
+          if (step.assistantEventId !== undefined) ids.add(step.assistantEventId)
+          if (step.promptEpochEventId !== undefined) ids.add(step.promptEpochEventId)
+          for (const tool of step.tools) ids.add(tool.eventId)
+        }
+      }
+      position += count
+      if (position >= end) break
+    }
+    const epochs = session.promptEpochs.filter(epoch => ids.has(epoch.eventId))
+    const previous = new Set(epochs.flatMap(epoch => epoch.previousEventId === undefined ? [] : [epoch.previousEventId]))
+    return { ...session, execution, timeline: session.timeline.filter(item => ids.has(item.eventId)),
+      promptEpochs: session.promptEpochs.filter(epoch => ids.has(epoch.eventId) || previous.has(epoch.eventId)),
+      page: { offset: start, count: Math.min(40, Math.max(0, total - start)), total } }
+  }
+
+  initialView(): ExplorerImportView | undefined {
+    if (this.current === undefined) return undefined
+    return { ...this.current, sessions: this.current.sessions.map(session => session.id === this.current?.rootSessionId
+      ? this.sessionPage(session.id)!
+      : { ...session, execution: [], timeline: [], promptEpochs: [] }) }
+  }
+
+  conversationPage(sessionId: string, offset = 0): { records: readonly ConversationRecord[]; offset: number; total: number; nextOffset: number } {
+    const all = this.conversations.get(sessionId) ?? []
+    const start = Math.max(0, Math.min(Math.floor(offset), all.length))
+    const records: ConversationRecord[] = []
+    let characters = 0
+    for (let index = start; index < all.length && records.length < 100; index++) {
+      const record = all[index]!
+      if (records.length > 0 && characters + record.content.length > 262_144) break
+      records.push(record)
+      characters += record.content.length
+    }
+    return { records, offset: start, total: all.length, nextOffset: start + records.length }
+  }
+
+  private setArchive(archive: ImportedDshArchive, progress?: ImportProgress): ExplorerImportView {
+    progress?.('projecting')
     this.events.clear()
     this.conversations.clear()
     this.mediaObjects.clear()

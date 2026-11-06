@@ -60,6 +60,8 @@ npx @eriklee1895/dsh-session-log-explorer
 
 解析器支持 **V0–V4** 会话格式，包括旧版 packed chunk 和新版内嵌 timed stream。它保留原始事件，处理 V3 系统消息替换和 V4 工具结果，媒体与文件附件始终留在本地。目录和 ZIP 导入会按数值选择每个会话的最高 generation；遇到不支持的新版本会明确报错，不会静默回退。已核验的上游版本、测试覆盖与限制见 [兼容性验证](docs/compatibility.md)。
 
+加载和 Replace Session 会显示阶段状态与取消按钮；替换失败或取消时保留当前会话。长任务的执行、时间线和对话采用分页，详情展开时才渲染。具体测量与内存限制见 [加载性能](docs/loading-performance.md)。
+
 ## 本地开发
 
 需要 Node.js 20+ 与 pnpm。

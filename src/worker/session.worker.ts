@@ -13,21 +13,27 @@ self.addEventListener('message', (message: MessageEvent<ExplorerWorkerRequest>) 
   void (async () => {
     try {
       const request = message.data
-      if (request.type === 'import') {
-        const entries = request.entries.map(entry => ({ name: entry.name, path: entry.path, bytes: new Uint8Array(entry.bytes) }))
+      if (request.type === 'import' || request.type === 'import-files') {
+        respond({ type: 'progress', phase: 'reading' })
+        const entries = request.type === 'import' ? request.entries.map(entry => ({ name: entry.name, path: entry.path, bytes: new Uint8Array(entry.bytes) }))
+          : await Promise.all(request.entries.map(async entry => ({ name: entry.name, path: entry.path, bytes: new Uint8Array(await entry.file.arrayBuffer()) })))
         if (entries.length === 0) throw new Error('请选择至少一个会话文件')
         const first = entries[0]
         if (first === undefined) throw new Error('请选择至少一个会话文件')
-        const view = entries.length === 1 && first.name.endsWith('.zip')
-          ? await store.importArchive(first)
-          : entries.length === 1 && first.path === first.name
-            ? await store.importFile(first)
-            : await store.importDirectory(entries)
-        respond({ type: 'ready', view })
+        const progress = (phase: import('./protocol.ts').ImportPhase): void => { respond({ type: 'progress', phase }) }
+        if (entries.length === 1 && first.name.endsWith('.zip')) await store.importArchive(first, progress)
+        else if (entries.length === 1 && first.path === first.name) await store.importFile(first, progress)
+        else await store.importDirectory(entries, progress)
+        respond({ type: 'ready', view: store.initialView()! })
         return
       }
       if (request.type === 'conversation') {
-        respond({ type: 'conversation', sessionId: request.sessionId, records: store.conversation(request.sessionId) ?? [] })
+        respond({ type: 'conversation', sessionId: request.sessionId, ...store.conversationPage(request.sessionId, request.offset) })
+        return
+      }
+      if (request.type === 'session') {
+        const session = store.sessionPage(request.sessionId, request.offset)
+        if (session !== undefined) respond({ type: 'session', session })
         return
       }
       if (request.type === 'media') {
