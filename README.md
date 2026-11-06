@@ -75,6 +75,16 @@ pnpm build
 pnpm test
 ```
 
+## npm releases
+
+To release, explicitly increase `package.json` to an unused stable `X.Y.Z` in a PR, review the package contents, and merge the approved PR to `main`. Run `pnpm check` and `npm pack --dry-run --registry=https://registry.npmjs.org` before merging. The `publish.yml` workflow checks the merged commit on Windows, macOS and Linux; only after all three pass does it build, validate and publish that exact tarball to npm `latest` with provenance. Documentation-only pushes and other pushes without a version change do not publish.
+
+Publishing uses the existing npm Trusted Publishing/GitHub OIDC configuration, with no npm token. Keep the exact `publish.yml` filename, direct push trigger and current absence of a GitHub environment; [npm also validates calling workflows and optional environments](https://docs.npmjs.com/trusted-publishers/). Do not change those identities or persistent access settings as part of routine releases.
+
+Publish jobs run one at a time without canceling an upload. They check main's current version and re-read the public npm registry before upload. Already published versions skip without retagging; old jobs cannot replace a newer stable version. Registry read failures fail closed after bounded retries. After a transient check/read/build failure, diagnose it and re-run the original workflow. An upload is attempted once; after an upload error the workflow queries npm to confirm the packed integrity. If its outcome remains unconfirmed, inspect npm and the run before any retry. Never move a published tag or reuse a version; corrections need a new version PR.
+
+A matching annotated `vX.Y.Z` tag on a commit on main is retained as an explicit recovery fallback, using the same three-platform checks and release guards. No generated tag or second workflow is needed. Prerelease versions/tags (such as `v0.2.0-rc.1`) and build metadata skip publishing; there is no automatic prerelease channel. See [AGENTS.md](AGENTS.md#npm-releases) for artifact validation and recovery details.
+
 ## Scope
 
 The explorer is a local learning and debugging tool for exported logs. It does not connect to a running DSH Agent, mutate a session, provide a live tail, or merge independent subagent logs into a fabricated global causal sequence.
