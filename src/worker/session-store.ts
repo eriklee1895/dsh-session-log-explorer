@@ -22,6 +22,14 @@ export interface ExplorerImportView {
   readonly attachmentNames?: readonly string[]
 }
 
+export interface ExplorerConversationPage {
+  readonly records: readonly ConversationRecord[]
+  readonly offset: number
+  readonly total: number
+  readonly previousOffset: number
+  readonly nextOffset: number
+}
+
 function imageReferences(value: unknown, refs: Set<string>): void {
   if (Array.isArray(value)) {
     for (const child of value) imageReferences(child, refs)
@@ -40,6 +48,7 @@ function imageReferences(value: unknown, refs: Set<string>): void {
 export class ExplorerSessionStore {
   private readonly events = new Map<string, ExplorerEvent>()
   private readonly conversations = new Map<string, readonly ConversationRecord[]>()
+  private readonly conversationPageOffsets = new Map<string, number[]>()
   private readonly mediaObjects = new Map<string, Uint8Array>()
   private readonly fileObjects = new Map<string, Uint8Array>()
   private current: ExplorerImportView | undefined
@@ -119,24 +128,43 @@ export class ExplorerSessionStore {
       : { ...session, execution: [], timeline: [], promptEpochs: [] }) }
   }
 
-  conversationPage(sessionId: string, offset = 0): { records: readonly ConversationRecord[]; offset: number; total: number; nextOffset: number } {
+  conversationPage(sessionId: string, offset = 0): ExplorerConversationPage {
     const all = this.conversations.get(sessionId) ?? []
-    const start = Math.max(0, Math.min(Math.floor(offset), all.length))
-    const records: ConversationRecord[] = []
-    let characters = 0
-    for (let index = start; index < all.length && records.length < 100; index++) {
-      const record = all[index]!
-      if (records.length > 0 && characters + record.content.length > 262_144) break
-      records.push(record)
-      characters += record.content.length
+    const target = Math.max(0, Math.min(Math.floor(offset || 0), all.length))
+    const offsets = this.conversationPageOffsets.get(sessionId) ?? [0]
+    if (this.conversations.has(sessionId)) this.conversationPageOffsets.set(sessionId, offsets)
+    // Extend the boundary index only as far as requested. Revisiting a page does not rescan the log.
+    let end = offsets.at(-1)!
+    while (end < all.length && end <= target) {
+      const start = end
+      let characters = 0
+      while (end < all.length && end - start < 100) {
+        const length = all[end]!.content.length
+        if (end > start && characters + length > 262_144) break
+        characters += length
+        end++
+      }
+      offsets.push(end)
     }
-    return { records, offset: start, total: all.length, nextOffset: start + records.length }
+    // Snap direct offsets to the containing page, so next/previous remain exact inverses.
+    let lower = 0
+    let upper = offsets.length
+    while (lower + 1 < upper) {
+      const middle = Math.floor((lower + upper) / 2)
+      if (offsets[middle]! <= target) lower = middle
+      else upper = middle
+    }
+    const start = offsets[lower]!
+    end = offsets[lower + 1] ?? start
+    return { records: all.slice(start, end), offset: start, total: all.length,
+      previousOffset: offsets[Math.max(0, lower - 1)]!, nextOffset: end }
   }
 
   private setArchive(archive: ImportedDshArchive, progress?: ImportProgress): ExplorerImportView {
     progress?.('projecting')
     this.events.clear()
     this.conversations.clear()
+    this.conversationPageOffsets.clear()
     this.mediaObjects.clear()
     this.fileObjects.clear()
     for (const [name, bytes] of archive.media) this.mediaObjects.set(name, bytes)

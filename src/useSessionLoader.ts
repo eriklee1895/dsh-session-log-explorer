@@ -17,7 +17,7 @@ export function useSessionLoader() {
   const [revision, setRevision] = useState(0)
   const [sessionId, setSessionId] = useState<string>()
   const [conversation, setConversation] = useState<readonly ConversationRecord[]>([])
-  const [conversationPage, setConversationPage] = useState({ offset: 0, total: 0, nextOffset: 0 })
+  const [conversationPage, setConversationPage] = useState({ offset: 0, total: 0, previousOffset: 0, nextOffset: 0 })
   const [event, setEvent] = useState<ExplorerEvent>()
   const [selectedEventId, setSelectedEventId] = useState<string>()
   const [error, setError] = useState<string>()
@@ -74,7 +74,7 @@ export function useSessionLoader() {
       }
       if (data.type === 'conversation' && data.sessionId === selected.current) {
         setConversation(data.records)
-        setConversationPage({ offset: data.offset ?? 0, total: data.total ?? data.records.length, nextOffset: data.nextOffset ?? data.records.length })
+        setConversationPage({ offset: data.offset, total: data.total, previousOffset: data.previousOffset, nextOffset: data.nextOffset })
         setViewLoading(false)
       }
       if (data.type === 'event') { setSelectedEventId(data.eventId); setEvent(data.event) }
@@ -107,7 +107,7 @@ export function useSessionLoader() {
     if (view === undefined || (task !== null && task.view !== view)) return
     if (task !== null) {
       worker.current?.terminate(); worker.current = task.worker; pending.current = null
-      clearMedia(); setConversation([]); setConversationPage({ offset: 0, total: 0, nextOffset: 0 })
+      clearMedia(); setConversation([]); setConversationPage({ offset: 0, total: 0, previousOffset: 0, nextOffset: 0 })
       setEvent(undefined); setSelectedEventId(undefined); setError(undefined); setLoading(undefined)
       selected.current = view.rootSessionId
       for (const name of view.mediaNames) post({ type: 'media', name })

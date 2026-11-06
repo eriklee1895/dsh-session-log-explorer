@@ -1,6 +1,5 @@
-import type { ConversationRecord } from '../model/projection.ts'
 import type { ExplorerEvent } from './parser.ts'
-import type { ExplorerImportView, ExplorerSessionView } from './session-store.ts'
+import type { ExplorerConversationPage, ExplorerImportView, ExplorerSessionView } from './session-store.ts'
 
 export type ImportPhase = 'reading' | 'extracting' | 'parsing' | 'projecting' | 'rendering'
 
@@ -23,7 +22,7 @@ export type ExplorerWorkerResponse =
   | { readonly type: 'ready'; readonly view: ExplorerImportView }
   | { readonly type: 'progress'; readonly phase: ImportPhase }
   | { readonly type: 'session'; readonly session: ExplorerSessionView }
-  | { readonly type: 'conversation'; readonly sessionId: string; readonly records: readonly ConversationRecord[]; readonly offset?: number; readonly total?: number; readonly nextOffset?: number }
+  | ({ readonly type: 'conversation'; readonly sessionId: string } & ExplorerConversationPage)
   | { readonly type: 'event'; readonly eventId: string; readonly event: ExplorerEvent | undefined }
   | { readonly type: 'media'; readonly name: string; readonly bytes: ArrayBuffer | undefined }
   | { readonly type: 'attachment'; readonly path: string; readonly bytes: ArrayBuffer | undefined }
