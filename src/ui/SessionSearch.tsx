@@ -24,6 +24,7 @@ export function SessionSearch({ sessionId, page, busy, disabled, errorFocus, onS
   const search = useRef(onSearch)
   search.current = onSearch
   const scopeId = scope === 'current' ? sessionId : undefined
+  useEffect(() => { setOffset(0) }, [scopeId])
   useEffect(() => {
     const handleKey = (event: KeyboardEvent): void => {
       if (!disabled && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {

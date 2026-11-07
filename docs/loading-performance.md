@@ -94,4 +94,24 @@ Interpret a slow run using the actual boundaries. Long startup with a short read
 
 ## Limits
 
-The Worker still retains source bytes, parsed events and full projections; memory remains proportional to the session. ZIP extraction is still synchronous inside the candidate Worker, so cancelling terminates that Worker rather than interrupting the unzip function. During replacement, old and candidate Workers temporarily coexist to preserve rollback. An individual enormous JSONL record, expanded JSON tree or attachment can still be expensive; paging does not cap an individual record. Raw-event sequence positions and contents are preserved. No private user ZIP was available in this cloud workspace for these measurements.
+The Worker still retains source bytes, parsed events and full projections; memory remains proportional to the session. ZIP extraction is still synchronous inside the candidate Worker, so cancelling terminates that Worker rather than interrupting the unzip function. During replacement, old and candidate Workers temporarily coexist to preserve rollback. An individual enormous JSONL record or attachment can still be expensive; paging does not cap an individual record. The debugger workbench now caps scalar execution previews and avoids JSON-tree construction for oversized selected values, as described below. Raw-event sequence positions and contents are preserved. No private user ZIP was available in this cloud workspace for these measurements.
+
+## Debugger navigation follow-up (2026-11-07)
+
+The first debugger milestone adds full-event Worker search, source/outcome facts and a new workbench. It does not change ZIP decoding or the production file-reading API. On the same Linux host, Chromium 154.0.8037.57 at 1440×1000, three alternating baseline/candidate imports used the identical **91,431,388-byte JSONL / 64,785,508-byte ZIP**, with **53,000 events, 1,000 turns and 10,000 steps**. Baseline is release commit `3e8b561`; candidate includes debugger navigation and scalar preview caps. JSONL SHA-256: `f5770eca0c2fec77a5e32f2cc6863b1b43b9023ac60d9891ee4aeae4283ae830`.
+
+| Measurement | Baseline median (range) | Debugger median (range) |
+| --- | ---: | ---: |
+| Initial usable view | 3,712 ms (2,955–4,366) | 4,302 ms (3,327–6,171) |
+| Worker ready to committed view | 55 ms (47–119) | 94 ms (72–97) |
+| Worker send to receive | 2.7 ms (1.5–11.8) | 2.4 ms (1.3–4.4) |
+| Main-page settled JS heap | 4.47 MiB | 4.57 MiB |
+| Initial DOM nodes | 144 | 169 |
+
+This does **not** demonstrate faster import; added navigation metadata and controls have a cost. CPU scheduling and file-read intervals were noisy. Candidate maximum frame gaps ranged from 67–550 ms, compared with 33–367 ms for baseline; p95 timer gaps were 17–22 ms for candidate. One large gap occurred during the asynchronous file-read interval, before projection/UI rendering. These measurements do not establish its underlying cause or smooth 60 fps. Full Worker/process peak memory was not measured in this follow-up.
+
+A full-log absent-text search of the same input completed with a 2,220 ms Worker round trip (3,458 ms from interaction including debounce and scheduling); locating a final-turn text match took 1,934 ms. Responses were 282 and 468 bytes. Main-page timers continued (115 ticks during the absent search), but the largest interval was 560 ms under this run's host load. No page errors occurred. This verifies complete search and bounded replies, not uninterrupted animation or a latency SLA. Search cooperatively yields between batches and abandons superseded requests; a single huge string can still take time to scan.
+
+For a separate **8,000,800-byte synthetic JSONL** with four approximately two-million-character fields, serialized initial-view UTF-8 size fell from **8,001,124 bytes to 67,129 bytes** using the 16,384-character per-field previews. All four tail matches and the complete raw result remained available. This establishes a transfer-size reduction for oversized scalar fields; it is not a hard page-memory bound or a whole-import speed claim. Explicit raw selection still transfers the entire selected event.
+
+The four new private samples have not been read in this cloud task: outbound policy rejected their storage host with `CONNECT 403`. All measurements above are synthetic, with no model API calls or private content. See [Debugger navigation](debugger-navigation.md) for the scope and remaining large-record limits.

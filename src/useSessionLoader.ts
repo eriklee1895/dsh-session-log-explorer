@@ -94,6 +94,7 @@ export function useSessionLoader() {
       if (data.type === 'event') {
         if (data.requestId !== undefined && data.requestId !== eventRequestId.current) return
         if (data.session !== undefined && data.sessionId !== undefined) {
+          setNotice(data.positionKnown === false ? '该事件未记录可定位的 Turn / Step，已打开原始事件。' : undefined)
           if (searchScopeSession.current !== undefined && searchScopeSession.current !== data.sessionId) {
             searchRequestId.current++; setSearchResults(undefined); setSearchBusy(false)
           }

@@ -1,6 +1,6 @@
 # Debugger Foundations Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implement the first agreed debugger milestone and UI foundation as reviewable commits.
 
@@ -32,9 +32,9 @@ Files: `src/model/projection.ts`, `src/model/event-facts.ts`, `src/worker/sessio
 
 Interfaces: message source facts, optional turn outcome/diagnostics, `ExecutionTool` call/result IDs; store exposes linked tool inspection for either endpoint.
 
-- [ ] Write and run failing tests for source preservation, outcomes, diagnostic attempts, error navigation and tool links.
-- [ ] Implement minimal source/outcome metadata and preserve paired call/result event IDs.
-- [ ] Pass targeted tests and public upstream corpus; commit factual model changes.
+- [x] Write and run failing tests for source preservation, outcomes, diagnostic attempts, error navigation and tool links.
+- [x] Implement minimal source/outcome metadata and preserve paired call/result event IDs.
+- [x] Pass targeted tests and public upstream corpus; commit factual model changes.
 
 ## Task 2: Full-session search and navigation
 
@@ -42,9 +42,9 @@ Files: new `src/worker/search.ts`, Worker/store/protocol, `src/useSessionLoader.
 
 Interfaces: typed request ID, literal query/scope/tool/source/error filters; bounded result pages with session/event IDs and snippets. Navigation selects the matching session/event independently of execution page.
 
-- [ ] Write failing tests for text after character 190 and outside the first 40 execution entries, scope, filters, Unicode, pagination and stale responses.
-- [ ] Implement value traversal with no retained serialized-log index and at most 50 result records per reply.
-- [ ] Wire accessible search controls, explicit counts and source navigation; pass targeted tests.
+- [x] Write failing tests for text after character 190 and outside the first 40 execution entries, scope, filters, Unicode, pagination and stale responses.
+- [x] Implement value traversal with no retained serialized-log index and at most 50 result records per reply.
+- [x] Wire accessible search controls, explicit counts and source navigation; pass targeted tests.
 
 ## Task 3: Workbench UI and evidence links
 
@@ -52,15 +52,15 @@ Files: `src/App.tsx`, extracted inspector component, `src/ui/ExplorerWorkspace.t
 
 Interfaces: linked tool metadata and raw-event callbacks, outcome/source badges, error-search callback, in-memory light/dark appearance.
 
-- [ ] Add focused tests for linked input/output/raw navigation, pending results, error actions and theme controls.
-- [ ] Refine header/tree/toolbar/details hierarchy, source/outcome display, error/diagnostic timeline groups and both themes.
-- [ ] Keep local timeline filtering labeled as a page-preview filter; full search is separate and explicit.
-- [ ] Verify at 1440px and narrow widths in a real browser, including keyboard/reduced-motion behavior.
+- [x] Add focused tests for linked input/output/raw navigation, pending results, error actions and theme controls.
+- [x] Refine header/tree/toolbar/details hierarchy, source/outcome display, error/diagnostic timeline groups and both themes.
+- [x] Keep local timeline filtering labeled as a page-preview filter; full search is separate and explicit.
+- [x] Verify at 1440px and narrow widths in a real browser, including keyboard/reduced-motion behavior.
 
 ## Task 4: Validation and review handoff
 
-- [ ] Check every available private sample locally; record only aggregate results or the precise access blocker.
-- [ ] Run `DSH_SOURCE_DIR=/workspace/deepseek-harness pnpm check`, `git diff --check`, browser smoke and large synthetic responsiveness checks.
-- [ ] Align README translations and source/compatibility evidence; capture screenshots using synthetic content only.
+- [x] Check every available private sample locally; record only aggregate results or the precise access blocker.
+- [x] Run `DSH_SOURCE_DIR=/workspace/deepseek-harness pnpm check`, `git diff --check`, browser smoke and large synthetic responsiveness checks.
+- [x] Align README translations and source/compatibility evidence; capture screenshots using synthetic content only.
 - [ ] Push separate model/navigation and UI commits in a draft PR; inspect exact-HEAD three-platform CI.
 - [ ] Report completed milestone, remaining roadmap, risks and private-sample coverage accurately.

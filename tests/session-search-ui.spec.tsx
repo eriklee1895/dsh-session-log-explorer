@@ -33,3 +33,18 @@ it('opens an error-only search from the overview action', () => {
   expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ query: '', sessionId: 'root', errorsOnly: true }))
   expect((screen.getByLabelText('仅错误事件') as HTMLInputElement).checked).toBe(true)
 })
+
+it('returns to the first result page when the current session changes', () => {
+  vi.useFakeTimers()
+  const search = vi.fn()
+  const props = { sessionId: 'root', busy: false, disabled: false, errorFocus: 0, onSearch: search, onReveal: () => {},
+    page: { total: 105, offset: 0, previousOffset: 0, nextOffset: 50, results: [], facets: { tools: [], sources: [], eventTypes: [] } } }
+  const { rerender } = render(<SessionSearch {...props} />)
+  fireEvent.keyDown(document, { key: 'k', ctrlKey: true })
+  fireEvent.click(screen.getByRole('button', { name: '下一组' }))
+  act(() => { vi.advanceTimersByTime(200) })
+  expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'root', offset: 50 }))
+  rerender(<SessionSearch {...props} sessionId="child" />)
+  act(() => { vi.advanceTimersByTime(200) })
+  expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: 'child', offset: 0 }))
+})

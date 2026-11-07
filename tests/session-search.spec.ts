@@ -30,6 +30,7 @@ describe('Worker session search', () => {
     expect(last?.results).toHaveLength(5)
     expect(last?.nextOffset).toBe(105)
     expect(store.reveal('root:209')).toMatchObject({ sessionId: 'root', session: { id: 'root', page: { offset: 80 } } })
+    expect((await store.search({ query: '209', eventType: 'assistant/message' }))?.results.map(result => result.eventId)).toEqual(['root:209'])
   })
 
   it('keeps current/all-session scopes explicit and supports error/tool/source/type filters', async () => {
@@ -57,6 +58,8 @@ describe('Worker session search', () => {
     await store.importFile({ name: 'session.v4.jsonl', bytes: artifact('root', 1) })
     expect((await store.search({ query: '<script>' }))?.total).toBe(1)
     expect((await store.search({ query: '.*' }))?.total).toBe(0)
+    expect((await store.search({ query: 'undefined' }))?.total).toBe(0)
+    expect((await store.search({ query: 'ignorable' }))?.total).toBe(0)
     expect((await store.search({ query: 'needle', sessionId: 'missing' }))?.total).toBe(0)
     expect(await store.search({ query: 'needle' }, () => false)).toBeUndefined()
     expect(store.reveal('missing:0')).toBeUndefined()

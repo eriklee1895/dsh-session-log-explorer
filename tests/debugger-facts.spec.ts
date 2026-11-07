@@ -3,6 +3,7 @@ import { parseSessionJsonl } from '../src/worker/parser.ts'
 import { projectSession } from '../src/model/projection.ts'
 import { adaptTrajectoryTurns } from '../src/ui/trajectory-adapter.ts'
 import { ExplorerSessionStore } from '../src/worker/session-store.ts'
+import { messageLabel, turnOutcomeLabel } from '../src/model/event-facts.ts'
 
 function project(rows: readonly { type: string; data: unknown }[]) {
   return projectSession(parseSessionJsonl([
@@ -15,6 +16,44 @@ const message = (kind: string, text: string) => ({ type: 'user/message', data: {
 } })
 
 describe('recorded debugger facts', () => {
+  it('keeps prototype-named extension sources and outcomes as plain labels', () => {
+    for (const kind of ['__proto__', 'constructor', 'toString']) {
+      expect(messageLabel(kind)).toBe(`消息 · ${kind}`)
+      expect(turnOutcomeLabel(kind)).toBe(kind)
+    }
+  })
+  it('does not attribute messages after a recorded Turn closure to the closed Turn', () => {
+    const model = project([{ type: 'turn/start', data: { turn: 1 } }, message('user', 'first request'),
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } }, message('agent-message', 'between turns'),
+      { type: 'turn/start', data: { turn: 2 } }, message('user', 'second request')])
+    expect(model.execution[0]?.end).toBe(12)
+    expect(model.execution[0]?.inputs?.map(input => input.eventId)).toEqual(['facts:1'])
+    expect(model.timeline.find(item => item.eventId === 'facts:3')?.turn).toBeUndefined()
+  })
+
+  it('bounds paged execution text while retaining full search and raw inspection', async () => {
+    const store = new ExplorerSessionStore()
+    const large = 'x'.repeat(200_000) + 'tail-needle'
+    const rows = [{ type: 'session', version: 4, id: 'budget', createdAt: 1, delegationDepth: 0, isSeeded: false },
+      { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+      { type: 'user/message', seq: 1, time: 2, data: { role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: large }] } },
+      { type: 'step/start', seq: 2, time: 3, data: { turn: 1, step: 1 } },
+      { type: 'tool/call', seq: 3, time: 4, data: { turn: 1, step: 1, callId: 'c', name: 'shell', arguments: large } },
+      { type: 'tool/result', seq: 4, time: 5, data: { turn: 1, step: 1, message: { role: 'tool', toolCallId: 'c', content: [{ type: 'text', text: large }] } } },
+      { type: 'assistant/message', seq: 5, time: 6, data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: large }] }, stream: [] } }]
+    await store.importFile({ name: 'session.v4.jsonl', bytes: new TextEncoder().encode(rows.map(row => JSON.stringify(row)).join('\n')) })
+    const turn = store.initialView()!.sessions[0]!.execution[0]!
+    expect(turn.prompt?.content.length).toBeLessThanOrEqual(16_384)
+    expect(turn.prompt?.previewed).toBe(true)
+    expect(turn.steps[0]?.assistant.length).toBeLessThanOrEqual(16_384)
+    expect(turn.steps[0]?.previewed).toBe(true)
+    expect(turn.steps[0]?.tools[0]?.output.length).toBeLessThanOrEqual(16_384)
+    expect(turn.steps[0]?.tools[0]?.previewed).toBe(true)
+    expect(store.tool('budget:3')?.output).toBe(large)
+    expect(store.event('budget:4')?.rawRecord).toContain('tail-needle')
+    expect((await store.search({ query: 'tail-needle' }))?.total).toBe(4)
+  })
+
   it('keeps errors outside entered steps available in the initial bounded view', async () => {
     const store = new ExplorerSessionStore()
     const rows = [{ type: 'session', version: 4, id: 'loose', createdAt: 1, delegationDepth: 0, isSeeded: false },
@@ -24,6 +63,7 @@ describe('recorded debugger facts', () => {
     await store.importFile({ name: 'session.v4.jsonl', bytes: new TextEncoder().encode(rows.map(row => JSON.stringify(row)).join('\n')) })
     const view = store.initialView()!.sessions[0]!
     expect(view.timeline.filter(item => item.severity === 'error').map(item => item.eventId)).toEqual(['loose:0', 'loose:2'])
+    expect(store.reveal('loose:0')?.positionKnown).toBe(false)
     expect(adaptTrajectoryTurns(view.execution, view.timeline).flatMap(turn => turn.groups.flatMap(group => group.cells)).map(cell => cell.recordId)).toEqual(['loose:2', 'loose:0'])
   })
 

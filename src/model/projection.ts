@@ -46,9 +46,11 @@ export interface ExecutionTool {
   readonly callEventId?: string
   readonly resultEventId?: string
   readonly status?: 'pending' | 'returned' | 'error' | 'orphan'
+  readonly previewed?: boolean
 }
 
 export interface ExecutionStep {
+  readonly previewed?: boolean
   readonly id: string
   readonly eventId: string
   readonly turn: number
@@ -88,7 +90,7 @@ export interface ExecutionTurn {
   readonly turn: number
   readonly start: number
   readonly end: number
-  readonly prompt: { readonly eventId: string; readonly content: string } | undefined
+  readonly prompt: { readonly eventId: string; readonly content: string; readonly previewed?: boolean } | undefined
   readonly promptEpochs: readonly PromptEpoch[]
   readonly steps: readonly ExecutionStep[]
   readonly outcome?: { readonly kind: string; readonly label: string; readonly eventId: string }
@@ -273,6 +275,9 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       const kind = typeof reason?.kind === 'string' ? reason.kind : typeof data.reason === 'string' ? data.reason : undefined
       if (turn !== undefined && kind !== undefined) ensureTurn(turn, event.time).outcome = { kind, label: turnOutcomeLabel(kind), eventId: id }
       if (kind === 'error') append({ id, eventId: id, kind: 'system', label: 'Turn 出错', start: event.time, end: event.time, eventSeqs: [event.seq], severity: 'error' })
+      if (activeStep?.turn === turn) activeStep = undefined
+      if (activeTurn === turn) activeTurn = undefined
+      continue
     }
     if (event.type === 'assistant/attempt') {
       const preview = decodeAssistantStream(data.stream ?? []).slice(0, 8).flatMap(({ chunk }) => typeof chunk.text === 'string' ? [chunk.text.slice(0, 220)] : []).join('')

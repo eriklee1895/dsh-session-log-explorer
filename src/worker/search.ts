@@ -44,6 +44,7 @@ function* textValues(value: unknown): Generator<string> {
     const item = stack[stack.length - 1]!.next()
     if (item.done) { stack.pop(); continue }
     const [key, child] = item.value
+    if (child === undefined) continue
     yield key
     if (child !== null && typeof child === 'object') stack.push(Object.entries(child)[Symbol.iterator]())
     else yield String(child)
@@ -89,7 +90,8 @@ export async function searchEvents(entries: Iterable<SearchEntry>, request: Sess
     let matched: string | undefined
     if (query === '') matched = event.type
     else if (event.type.toLowerCase().includes(query)) matched = event.type
-    else for (const text of textValues(event.data)) {
+    else for (const text of textValues({ type: event.type, seq: event.seq, time: event.time, data: event.data,
+      surfaceOp: event.surfaceOp, sourceEventSeqs: event.sourceEventSeqs, ignorable: event.ignorable })) {
       const index = text.toLowerCase().indexOf(query)
       if (index >= 0) { matched = excerpt(text, index); break }
     }

@@ -27,7 +27,7 @@ export type ExplorerWorkerResponse =
   | { readonly type: 'session'; readonly session: ExplorerSessionView }
   | ({ readonly type: 'conversation'; readonly sessionId: string } & ExplorerConversationPage)
   | { readonly type: 'event'; readonly eventId: string; readonly event: ExplorerEvent | undefined; readonly requestId?: number;
-      readonly tool?: ExecutionTool; readonly sessionId?: string; readonly session?: ExplorerSessionView }
+      readonly tool?: ExecutionTool; readonly sessionId?: string; readonly session?: ExplorerSessionView; readonly positionKnown?: boolean }
   | { readonly type: 'search'; readonly requestId: number; readonly page: SessionSearchPage }
   | { readonly type: 'media'; readonly name: string; readonly bytes: ArrayBuffer | undefined }
   | { readonly type: 'attachment'; readonly path: string; readonly bytes: ArrayBuffer | undefined }

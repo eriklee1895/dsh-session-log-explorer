@@ -13,7 +13,7 @@ export function messageLabel(source: string): string {
     'team-message': '团队消息', 'subagent-settled': '子代理通知', goal: '目标续轮',
     compaction: '压缩摘要', unknown: '来源未记录', model: '模型', tool: '工具', 'system-prompt': '系统提示词',
   }
-  return labels[source] ?? `消息 · ${source}`
+  return Object.hasOwn(labels, source) ? labels[source]! : `消息 · ${source}`
 }
 
 export function turnOutcomeLabel(kind: string): string {
@@ -21,7 +21,7 @@ export function turnOutcomeLabel(kind: string): string {
     completed: '已完成', aborted: '已取消', blocked: '已阻止', error: '出错',
     'max-tokens': 'Token 上限', interrupted: '中断后补记', forked: '分叉边界',
   }
-  return labels[kind] ?? kind
+  return Object.hasOwn(labels, kind) ? labels[kind]! : kind
 }
 
 export function toolResultIdentity(data: unknown): { callId: unknown; failed: boolean } {

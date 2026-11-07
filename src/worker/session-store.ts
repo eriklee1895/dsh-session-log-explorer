@@ -14,6 +14,9 @@ export interface ExplorerSessionView {
   readonly execution: readonly ExecutionTurn[]
   readonly promptEpochs: readonly PromptEpoch[]
   readonly page?: { readonly offset: number; readonly count: number; readonly total: number }
+  readonly title?: string
+  readonly model?: string
+  readonly formatVersion?: number
 }
 
 export interface ExplorerImportView {
@@ -50,7 +53,7 @@ function imageReferences(value: unknown, refs: Set<string>): void {
 export class ExplorerSessionStore {
   private readonly events = new Map<string, ExplorerEvent>()
   private readonly tools = new Map<string, ExecutionTool>()
-  private readonly locations = new Map<string, { sessionId: string; offset: number }>()
+  private readonly locations = new Map<string, { sessionId: string; offset: number; positionKnown: boolean }>()
   private readonly conversations = new Map<string, readonly ConversationRecord[]>()
   private readonly conversationPageOffsets = new Map<string, number[]>()
   private readonly mediaObjects = new Map<string, Uint8Array>()
@@ -76,11 +79,16 @@ export class ExplorerSessionStore {
 
   tool(id: string): ExecutionTool | undefined { return this.tools.get(id) }
 
-  reveal(id: string): { sessionId: string; session: ExplorerSessionView; tool?: ExecutionTool } | undefined {
+  reveal(id: string): { sessionId: string; session: ExplorerSessionView; tool?: ExecutionTool; positionKnown: boolean } | undefined {
     const location = this.locations.get(id)
     if (location === undefined) return undefined
-    const session = this.sessionPage(location.sessionId, location.offset)
-    return session === undefined ? undefined : { sessionId: location.sessionId, session, tool: this.tools.get(id) }
+    let session = this.sessionPage(location.sessionId, location.offset)
+    if (session === undefined) return undefined
+    const item = this.current?.sessions.find(value => value.id === location.sessionId)?.timeline.find(value => value.eventId === id)
+    if (item !== undefined && !session.timeline.some(value => value.eventId === id)) {
+      session = { ...session, timeline: [...session.timeline, item].sort((a, b) => a.start - b.start || (a.eventSeqs[0] ?? 0) - (b.eventSeqs[0] ?? 0)) }
+    }
+    return { sessionId: location.sessionId, session, tool: this.tools.get(id), positionKnown: location.positionKnown }
   }
 
   search(request: SessionSearchRequest, isCurrent?: () => boolean): Promise<SessionSearchPage | undefined> {
@@ -122,7 +130,13 @@ export class ExplorerSessionStore {
       const steps = turn.steps.slice(Math.max(0, start - position), Math.max(0, end - position))
       if (position < end && position + count > start) {
         const epochs = turn.promptEpochs.filter(epoch => epoch.step === undefined || steps.some(step => step.step === epoch.step))
-        execution.push({ ...turn, steps, promptEpochs: epochs, inputs: turn.inputs?.slice(0, 20), inputCount: turn.inputs?.length ?? 0 })
+        const clip = (text: string): string => text.slice(0, 16_384)
+        const responseSteps = steps.map(step => ({ ...step, reasoning: clip(step.reasoning), assistant: clip(step.assistant),
+          previewed: step.reasoning.length > 16_384 || step.assistant.length > 16_384,
+          tools: step.tools.map(tool => ({ ...tool, input: clip(tool.input), output: clip(tool.output),
+            previewed: tool.input.length > 16_384 || tool.output.length > 16_384 })) }))
+        execution.push({ ...turn, steps: responseSteps, promptEpochs: epochs, inputs: turn.inputs?.slice(0, 20), inputCount: turn.inputs?.length ?? 0,
+          prompt: turn.prompt === undefined ? undefined : { ...turn.prompt, content: clip(turn.prompt.content), previewed: turn.prompt.content.length > 16_384 } })
         if (turn.prompt !== undefined) ids.add(turn.prompt.eventId)
         for (const input of turn.inputs?.slice(0, 20) ?? []) ids.add(input.eventId)
         if (turn.outcome !== undefined) ids.add(turn.outcome.eventId)
@@ -217,12 +231,19 @@ export class ExplorerSessionStore {
         const data = recordOf(event.data)
         const turn = typeof data?.turn === 'number' ? data.turn : owners.get(id)?.turn
         const step = typeof data?.step === 'number' ? data.step : owners.get(id)?.step
-        this.locations.set(id, { sessionId: session.header.id,
-          offset: stepPages.get(`${turn}:${step}`) ?? turnPages.get(turn ?? -1) ?? 0 })
+        const offset = stepPages.get(`${turn}:${step}`) ?? turnPages.get(turn ?? -1)
+        this.locations.set(id, { sessionId: session.header.id, offset: offset ?? 0, positionKnown: offset !== undefined })
       }
       this.conversations.set(session.header.id, projection.conversation)
+      let title: unknown
+      for (let index = session.events.length - 1; index >= 0; index--) {
+        const event = session.events[index]!
+        if (event.type === 'session/title' && typeof recordOf(event.data)?.title === 'string') { title = recordOf(event.data)!.title; break }
+      }
+      const model = projection.promptEpochs.at(-1)?.config.model
       return {
         id: session.header.id,
+        ...(typeof title === 'string' ? { title } : {}), ...(typeof model === 'string' ? { model } : {}), formatVersion: session.header.version,
         ...(session.parentSessionId === undefined ? {} : { parentSessionId: session.parentSessionId }),
         sourcePath: session.sourcePath,
         eventCount: session.events.length,
