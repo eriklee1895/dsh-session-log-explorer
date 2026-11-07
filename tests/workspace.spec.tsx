@@ -31,6 +31,15 @@ const session = {
 describe('ExplorerWorkspace', () => {
   afterEach(() => { cleanup() })
 
+  it('does not invent a Turn number for an unassociated error', () => {
+    render(<ExplorerWorkspace session={{ ...session, execution: [], timeline: [{ id: 'root:0', eventId: 'root:0',
+      kind: 'system', label: 'agent/error', severity: 'error', start: 1, end: 1, eventSeqs: [0] }] }}
+      conversation={[]} selectedEventId={undefined} onEventSelect={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: '时间线' }))
+    expect(screen.getByText(/未关联 Turn 的记录/)).toBeTruthy()
+    expect(screen.queryByText(/Turn 1$/)).toBeNull()
+  })
+
   it('returns to the adjacent character-limited page through repeated forward/back navigation', async () => {
     const store = new ExplorerSessionStore()
     await store.importFile({ name: 'session.v4.jsonl', bytes: new TextEncoder().encode([

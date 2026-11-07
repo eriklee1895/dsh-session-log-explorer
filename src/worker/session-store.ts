@@ -1,4 +1,4 @@
-import { projectSession, type ConversationRecord, type ExecutionTurn, type PromptEpoch, type SessionSummary, type TimelineItem } from '../model/projection.ts'
+import { projectSession, type ConversationRecord, type ExecutionTool, type ExecutionTurn, type PromptEpoch, type SessionSummary, type TimelineItem } from '../model/projection.ts'
 import type { ExplorerEvent } from './parser.ts'
 import { importDshArchive, importDshDirectory, importDshFile, type DshArchiveInput, type DshDirectoryEntry, type ImportedDshArchive, type ImportProgress } from './importer.ts'
 
@@ -47,6 +47,7 @@ function imageReferences(value: unknown, refs: Set<string>): void {
 /** Holds the parsed artifact in the Worker and exposes derived view data to the UI. */
 export class ExplorerSessionStore {
   private readonly events = new Map<string, ExplorerEvent>()
+  private readonly tools = new Map<string, ExecutionTool>()
   private readonly conversations = new Map<string, readonly ConversationRecord[]>()
   private readonly conversationPageOffsets = new Map<string, number[]>()
   private readonly mediaObjects = new Map<string, Uint8Array>()
@@ -69,6 +70,8 @@ export class ExplorerSessionStore {
   event(id: string): ExplorerEvent | undefined {
     return this.events.get(id)
   }
+
+  tool(id: string): ExecutionTool | undefined { return this.tools.get(id) }
 
   conversation(sessionId: string): readonly ConversationRecord[] | undefined {
     return this.conversations.get(sessionId)
@@ -101,8 +104,10 @@ export class ExplorerSessionStore {
       const steps = turn.steps.slice(Math.max(0, start - position), Math.max(0, end - position))
       if (position < end && position + count > start) {
         const epochs = turn.promptEpochs.filter(epoch => epoch.step === undefined || steps.some(step => step.step === epoch.step))
-        execution.push({ ...turn, steps, promptEpochs: epochs })
+        execution.push({ ...turn, steps, promptEpochs: epochs, inputs: turn.inputs?.slice(0, 20), inputCount: turn.inputs?.length ?? 0 })
         if (turn.prompt !== undefined) ids.add(turn.prompt.eventId)
+        for (const input of turn.inputs?.slice(0, 20) ?? []) ids.add(input.eventId)
+        if (turn.outcome !== undefined) ids.add(turn.outcome.eventId)
         for (const epoch of epochs) ids.add(epoch.eventId)
         for (const step of steps) {
           if (step.reasoningEventId !== undefined) ids.add(step.reasoningEventId)
@@ -114,6 +119,10 @@ export class ExplorerSessionStore {
       position += count
       if (position >= end) break
     }
+    const annotations = session.timeline.filter(item => item.severity !== undefined
+      && (item.turn === undefined || execution.some(turn => turn.turn === item.turn
+        && (item.step === undefined || turn.steps.some(step => step.step === item.step))))).slice(0, 40)
+    for (const item of annotations) ids.add(item.eventId)
     const epochs = session.promptEpochs.filter(epoch => ids.has(epoch.eventId))
     const previous = new Set(epochs.flatMap(epoch => epoch.previousEventId === undefined ? [] : [epoch.previousEventId]))
     return { ...session, execution, timeline: session.timeline.filter(item => ids.has(item.eventId)),
@@ -163,6 +172,7 @@ export class ExplorerSessionStore {
   private setArchive(archive: ImportedDshArchive, progress?: ImportProgress): ExplorerImportView {
     progress?.('projecting')
     this.events.clear()
+    this.tools.clear()
     this.conversations.clear()
     this.conversationPageOffsets.clear()
     this.mediaObjects.clear()
@@ -174,6 +184,7 @@ export class ExplorerSessionStore {
       const projection = projectSession(session)
       for (const event of session.events) imageReferences(event.data, refs)
       for (const [id, event] of projection.events) this.events.set(id, event)
+      for (const [id, tool] of projection.tools) this.tools.set(id, tool)
       this.conversations.set(session.header.id, projection.conversation)
       return {
         id: session.header.id,

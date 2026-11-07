@@ -98,7 +98,7 @@ function Timeline({ turns, items, selectedEventId, onEventSelect }: {
     () => new Map(trajectoryCells.map(cell => [cell.index, cell.recordId] as const)), [trajectoryCells],
   )
   const rows = useMemo(() => trajectoryTurns.flatMap((turn, turnIndex) => {
-    const turnNumber = turn.turn ?? turnIndex + 1
+    const turnNumber = turn.turn ?? -1
     return turn.groups.flatMap((group, groupIndex) => group.cells.map((cell): TrajectoryRow => ({
       content: cell.text,
       eventId: cell.recordId,
@@ -123,7 +123,7 @@ function Timeline({ turns, items, selectedEventId, onEventSelect }: {
   const searchMatchIndexes = useMemo(() => search.trim() === '' ? null : new Set(filtered.flatMap((row) => {
     return [row.index]
   })), [filtered, search])
-  const turnNumbers = trajectoryTurns.map((turn, index) => turn.turn ?? index + 1)
+  const turnNumbers = trajectoryTurns.map((turn, index) => turn.turn ?? -1)
   const allTurnsCollapsed = turnNumbers.length > 0 && turnNumbers.every(turn => collapsedTurns.has(turn))
   const toggleTurns = (): void => { setCollapsedTurns(allTurnsCollapsed ? new Set() : new Set(turnNumbers)) }
   return <section className="trajectory-workbench" aria-label="Trajectory timeline">
@@ -143,14 +143,14 @@ function Timeline({ turns, items, selectedEventId, onEventSelect }: {
     <div className="trajectory-ledger"><table aria-label="Trajectory records">
       <thead><tr><th>#</th><th>Event</th><th>Content</th><th>Time</th></tr></thead>
       <tbody>{trajectoryTurns.map((turn, turnIndex) => {
-        const turnNumber = turn.turn ?? turnIndex + 1
+        const turnNumber = turn.turn ?? -1
         const turnRows = filtered.filter(row => row.turn === turnNumber)
         if (turnRows.length === 0) return null
         const collapsed = collapsedTurns.has(turnNumber)
         return <Fragment key={turnNumber}>
           <tr className="trajectory-turn-row"><th colSpan={4}><button onClick={() => { setCollapsedTurns((value) => {
             const next = new Set(value); if (next.has(turnNumber)) next.delete(turnNumber); else next.add(turnNumber); return next
-          }) }}><span>{collapsed ? '▸' : '▾'} Turn {turnNumber}</span><small>{turnRows.length} records</small></button></th></tr>
+          }) }}><span>{collapsed ? '▸' : '▾'} {turn.turn === null ? '未关联 Turn 的记录' : `Turn ${turnNumber}`}</span><small>{turnRows.length} records</small></button></th></tr>
           {!collapsed && turn.groups.map((group, groupIndex) => {
             const groupRows = turnRows.filter(row => row.groupId === `${String(turnNumber)}:${String(groupIndex)}`)
             if (groupRows.length === 0) return null
