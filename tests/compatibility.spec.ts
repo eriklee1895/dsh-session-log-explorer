@@ -53,7 +53,8 @@ describe('released DSH formats', () => {
     expect(parsed.events).toHaveLength(4)
     expect(model.execution[0]?.steps[0]).toMatchObject({ reasoning: 'think more', assistant: 'done', reasoningEventId: 'root:3' })
     expect(model.timeline.find(item => item.kind === 'reasoning')).toMatchObject({ eventId: 'root:3', start: 124, end: 125, eventSeqs: [3] })
-    expect(model.conversation.find(item => item.label === 'assistant/attempt')?.content).toContain('partial')
+    expect(model.conversation.some(item => item.label === 'assistant/attempt')).toBe(false)
+    expect(model.diagnostics.find(item => item.label === 'assistant/attempt')?.content).toContain('partial')
     expect(model.summary.tokens).toMatchObject({ cacheReadTokens: 8, cacheWriteTokens: 1 })
   })
 

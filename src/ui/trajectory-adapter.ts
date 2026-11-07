@@ -37,9 +37,11 @@ export function adaptTrajectoryTurns(
       recordId: eventId,
       startedAt: item?.start ?? null,
       timeSeconds: item === undefined ? null : Math.max(0, item.end - item.start) / 1_000,
+      ...(item?.severity === 'error' ? { isError: true } : {}),
     }
   }
-  return turns.map((turn) => {
+  const represented = new Set<string>()
+  const projected: TrajectoryTurn[] = turns.map((turn) => {
     const groups: TrajectoryTurn['groups'][number][] = []
     for (const epoch of turn.promptEpochs.filter(value => value.step === undefined)) {
       groups.push({ title: 'Request context', step: null, cells: [cell(epoch.eventId, {
@@ -73,6 +75,17 @@ export function adaptTrajectoryTurns(
         cells,
       })
     }
+    const used = new Set(groups.flatMap(group => group.cells.map(value => value.recordId)))
+    const extra = items.filter(item => item.turn === turn.turn && !used.has(item.eventId)).map(item => cell(item.eventId, {
+      kind: item.kind, label: item.label, text: `${item.label} · seq ${item.eventSeqs.join(', ')}`,
+    }))
+    if (extra.length > 0) groups.push({ title: '其他记录与诊断', step: null, cells: extra })
+    for (const group of groups) for (const value of group.cells) represented.add(value.recordId)
     return { turn: turn.turn, groups }
   })
+  const unassigned = items.filter(item => item.turn === undefined && !represented.has(item.eventId)).map(item => cell(item.eventId, {
+    kind: item.kind, label: item.label, text: `${item.label} · seq ${item.eventSeqs.join(', ')}`,
+  }))
+  if (unassigned.length > 0) projected.push({ turn: null, groups: [{ title: '未关联 Turn 的记录', step: null, cells: unassigned }] })
+  return projected
 }

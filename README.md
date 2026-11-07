@@ -21,7 +21,9 @@ The command serves the included static files on `127.0.0.1` and opens the browse
 ## What it helps you learn
 
 - Reconstruct turns and steps from recorded agent decisions instead of reading raw chunk events.
-- Follow tool calls, reasoning, assistant responses, errors, and the matching raw event in one workspace.
+- Follow tool calls, reasoning, assistant responses, errors, and the matching raw event in one workspace. Inspect linked call/result records, distinguish pending from empty results, and keep retry attempts separate from settled messages.
+- Search complete event text with Ctrl/Cmd K, across the current session or all imported sessions, and jump beyond the current execution page. Filter by event type, message source, tool or recorded errors.
+- Distinguish human input, runtime context and agent messages; inspect recorded turn outcomes without inferring success for unclosed turns. Switch between light and dark workbench themes without saving preferences.
 - Inspect the rendered system prompt, model configuration, and tool catalog that governed each request; compare meaningful prompt or tool updates without repeating unchanged resumes.
 - Learn why those snapshots appear and how DSH uses them in [Request context epochs](docs/request-context-epochs.md).
 - Compare execution order, active recorded work, and wall-clock time with waits preserved.
@@ -45,6 +47,12 @@ The command serves the included static files on `127.0.0.1` and opens the browse
 ### Study the agent trajectory
 
 ![Timeline with sequence, active time, and wall-clock views](docs/screenshots/trajectory.png)
+
+### Find the original evidence
+
+![Full-session search with a linked raw-event inspector, in dark mode](docs/screenshots/search.png)
+
+See [Debugger navigation](docs/debugger-navigation.md) for search semantics, source/outcome labels and preview limits. Screenshots use synthetic data only.
 
 ## Privacy
 
