@@ -62,5 +62,5 @@ Interfaces: linked tool metadata and raw-event callbacks, outcome/source badges,
 - [x] Check every available private sample locally; record only aggregate results or the precise access blocker.
 - [x] Run `DSH_SOURCE_DIR=/workspace/deepseek-harness pnpm check`, `git diff --check`, browser smoke and large synthetic responsiveness checks.
 - [x] Align README translations and source/compatibility evidence; capture screenshots using synthetic content only.
-- [ ] Push separate model/navigation and UI commits in a draft PR; inspect exact-HEAD three-platform CI.
-- [ ] Report completed milestone, remaining roadmap, risks and private-sample coverage accurately.
+- [x] Push separate model/navigation and UI commits in a draft PR; inspect exact-HEAD three-platform CI.
+- [x] Report completed milestone, remaining roadmap, risks and private-sample coverage accurately.

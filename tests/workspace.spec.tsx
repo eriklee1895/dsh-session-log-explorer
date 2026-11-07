@@ -31,6 +31,14 @@ const session = {
 describe('ExplorerWorkspace', () => {
   afterEach(() => { cleanup() })
 
+  it('opens the owning step when a later source delta in an aggregated item is revealed', () => {
+    render(<ExplorerWorkspace session={{ ...session, timeline: [{ id: 'root:2', eventId: 'root:2',
+      kind: 'reasoning', label: '模型推理', turn: 1, step: 1, start: 20, end: 30, eventSeqs: [2, 21, 22] }] }}
+      conversation={[]} selectedEventId="root:22" onEventSelect={() => {}} />)
+    expect(document.querySelector('.execution-step.focused[open]')).not.toBeNull()
+    expect(screen.getByText('inspect repository')).toBeTruthy()
+  })
+
   it('does not invent a Turn number for an unassociated error', () => {
     render(<ExplorerWorkspace session={{ ...session, execution: [], timeline: [{ id: 'root:0', eventId: 'root:0',
       kind: 'system', label: 'agent/error', severity: 'error', start: 1, end: 1, eventSeqs: [0] }] }}

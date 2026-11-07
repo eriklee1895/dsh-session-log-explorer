@@ -236,11 +236,14 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     return builder
   }
 
-  const append = (item: TimelineItem, record?: ConversationRecord): void => {
+  const append = (item: TimelineItem, record?: ConversationRecord): TimelineItem => {
     const owner = recordOf(events.get(item.eventId)?.data)
-    timeline.push({ ...item, ...(activeTurn === undefined ? {} : { turn: dataIndex(owner ?? {}, 'turn') ?? activeTurn }),
-      ...(dataIndex(owner ?? {}, 'step') === undefined ? {} : { step: dataIndex(owner ?? {}, 'step') }) })
+    const turn = dataIndex(owner ?? {}, 'turn') ?? item.turn ?? activeTurn
+    const step = dataIndex(owner ?? {}, 'step') ?? item.step ?? (activeStep?.turn === turn ? activeStep?.step : undefined)
+    const appended = { ...item, ...(turn === undefined ? {} : { turn }), ...(step === undefined ? {} : { step }) }
+    timeline.push(appended)
     if (record !== undefined) conversation.push(record)
+    return appended
   }
   for (const event of session.events) {
     const id = eventId(session.header.id, event)
@@ -360,8 +363,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       if (existing === undefined) {
         const item: TimelineItem = { id, eventId: id, kind: 'reasoning', label: '模型推理', start: event.time, end: event.time, eventSeqs: [event.seq] }
         const record: ConversationRecord = { eventId: id, kind: 'reasoning', label: '模型推理', content: chunk.text, eventSeqs: [event.seq] }
-        reasoning.set(key, { item, record })
-        append(item, record)
+        reasoning.set(key, { item: append(item, record), record })
       } else {
         const nextItem = { ...existing.item, end: event.time, eventSeqs: [...existing.item.eventSeqs, event.seq] }
         const nextRecord = {
@@ -437,6 +439,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       else {
         ptcCalls.delete(key)
         append({ id: tool.eventId, eventId: tool.eventId, kind: 'tool', label: tool.name, start: call?.event.time ?? event.time, end: event.time,
+          turn: toolStep?.turn, step: toolStep?.step,
           eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq], ...(tool.failed ? { severity: 'error' as const } : {}) }, {
           eventId: tool.eventId, kind: 'tool', label: tool.name, content: tool.output, eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq],
         })

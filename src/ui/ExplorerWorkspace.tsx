@@ -278,6 +278,8 @@ export function ExplorerWorkspace({
 }: ExplorerWorkspaceProps): React.JSX.Element {
   const [view, setView] = useState<WorkspaceView>('execution')
   const labels = useMemo(() => ({ overview: '概览', execution: '执行', timeline: '时间线', conversation: '对话' }), [])
+  const selectedItem = selectedEventId === undefined ? undefined : session.timeline.find(item => item.eventId === selectedEventId
+    || item.eventSeqs.some(seq => `${session.id}:${seq}` === selectedEventId))
   return <section className="workspace">
     <header className="workspace-toolbar">
       <div className="workspace-readout"><b>会话记录</b><small>{session.eventCount.toLocaleString('zh-CN')} 条事件</small></div>
@@ -297,7 +299,7 @@ export function ExplorerWorkspace({
     </nav>}
     {view === 'overview'  && <Overview session={session} onErrorSearch={onErrorSearch} />}
     {view === 'execution' && <Execution epochs={session.promptEpochs} turns={session.execution} onEventSelect={onEventSelect} selectedEventId={selectedEventId}
-      focusedTurn={session.timeline.find(item => item.eventId === selectedEventId)?.turn} focusedStep={session.timeline.find(item => item.eventId === selectedEventId)?.step} />}
+      focusedTurn={selectedItem?.turn} focusedStep={selectedItem?.step} />}
     {view === 'timeline' && session.page !== undefined && session.page.total > session.page.count && <p className="view-loading">时间线展示当前页的执行记录，可切换页码查看其余记录。</p>}
     {view === 'timeline' && <Timeline key={session.page?.offset ?? 0} items={session.timeline} onEventSelect={onEventSelect} selectedEventId={selectedEventId} turns={session.execution} />}
     {view === 'conversation' && <Conversation records={conversation} selectedEventId={selectedEventId} onEventSelect={onEventSelect} />}

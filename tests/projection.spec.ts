@@ -47,6 +47,19 @@ function prompted() {
 }
 
 describe('projectSession', () => {
+  it('aggregates every legacy reasoning delta into one owned timeline interval', () => {
+    const rows = [{ type: 'session', version: 0, id: 'reasoning', createdAt: 1, delegationDepth: 0 },
+      { type: 'turn/start', seq: 0, time: 100, data: { turn: 0 } },
+      { type: 'step/start', seq: 1, time: 110, data: { turn: 0, step: 0 } },
+      ...['one', ' two', ' three'].map((text, index) => ({ type: 'assistant/chunk', seq: index + 2, time: 120 + index * 10,
+        data: { turn: 0, step: 0, chunk: { type: 'reasoning-delta', index: 0, text } } }))]
+    const model = projectSession(parseSessionJsonl(rows.map(row => JSON.stringify(row)).join('\n')))
+    expect(model.timeline.filter(item => item.kind === 'reasoning')).toEqual([
+      expect.objectContaining({ eventId: 'reasoning:2', turn: 0, step: 0, start: 120, end: 140, eventSeqs: [2, 3, 4] }),
+    ])
+    expect(model.conversation[0]).toMatchObject({ content: 'one two three', eventSeqs: [2, 3, 4] })
+    expect(model.execution[0]?.steps[0]?.reasoning).toBe('one two three')
+  })
   it('builds one timeline item for a tool call and its result', () => {
     const model = projectSession(parsed())
 

@@ -14,6 +14,48 @@ function artifact(id: string, count = 105): Uint8Array {
 }
 
 describe('Worker session search', () => {
+  it('reveals coordinate-free headers and PTC endpoints on their recorded execution page', async () => {
+    const store = new ExplorerSessionStore()
+    const rows: unknown[] = [{ type: 'session', version: 4, id: 'locations', createdAt: 1, delegationDepth: 0, isSeeded: false }]
+    let seq = 0, header = '', call = '', result = ''
+    const add = (type: string, data: unknown): string => {
+      const id = `locations:${seq}`
+      rows.push({ type, seq, time: seq + 10, data }); seq++; return id
+    }
+    add('turn/start', { turn: 1 })
+    for (let step = 1; step <= 105; step++) {
+      add('step/start', { turn: 1, step })
+      if (step === 85) header = add('request/header', { reason: 'initial', header: { config: { model: 'header-later-page' }, tools: [] } })
+      if (step === 88) {
+        const data = { rootCallId: 'root-call', parentCallId: 'parent-call', subCallId: 'parent-call:ptc:1', name: 'ptc-later-page', arguments: {} }
+        call = add('tool/ptc-dispatch-start', data)
+        result = add('tool/ptc-dispatch', { ...data, isError: false, content: [{ type: 'text', text: 'ptc result' }] })
+      }
+      add('step/end', { turn: 1, step })
+    }
+    await store.importFile({ name: 'session.v4.jsonl', bytes: encode.encode(rows.map(row => JSON.stringify(row)).join('\n')) })
+    expect((await store.search({ query: 'header-later-page' }))?.results[0]?.eventId).toBe(header)
+    for (const id of [header, call, result]) {
+      const location = store.reveal(id)
+      expect(location).toMatchObject({ positionKnown: true, session: { page: { offset: 80 } } })
+      expect(location?.session.execution[0]?.steps.map(step => step.step)).toContain(id === header ? 85 : 88)
+    }
+    expect(store.reveal(result)?.tool).toMatchObject({ callEventId: call, resultEventId: result })
+  })
+
+  it('keeps Unicode case-insensitive excerpts anchored to the original matching text', async () => {
+    const store = new ExplorerSessionStore()
+    const literal = String.raw`.*[x](a)|+?^$\end`
+    const rows = [{ type: 'session', version: 4, id: 'unicode', createdAt: 1, delegationDepth: 0, isSeeded: false },
+      { type: 'user/message', seq: 0, time: 2, data: { role: 'user', content: [{ type: 'text', text: 'İ'.repeat(300) + 'TARGET' + 'z'.repeat(400) + literal }] } }]
+    await store.importFile({ name: 'session.v4.jsonl', bytes: encode.encode(rows.map(row => JSON.stringify(row)).join('\n')) })
+    const found = await store.search({ query: 'target' })
+    expect(found?.total).toBe(1)
+    expect(found?.results[0]?.excerpt).toContain('TARGET')
+    expect(found?.results[0]?.excerpt.length).toBeLessThanOrEqual(240)
+    expect((await store.search({ query: literal }))?.results[0]?.excerpt).toContain(literal)
+  })
+
   it('searches full text beyond previews and execution pages, with bounded stable result pages', async () => {
     const store = new ExplorerSessionStore()
     await store.importFile({ name: 'session.v4.jsonl', bytes: artifact('root') })

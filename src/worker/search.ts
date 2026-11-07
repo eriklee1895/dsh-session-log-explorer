@@ -62,7 +62,9 @@ function excerpt(value: string, index: number): string {
 /** Literal, case-insensitive full-event search with bounded replies and cooperative cancellation. */
 export async function searchEvents(entries: Iterable<SearchEntry>, request: SessionSearchRequest,
   isCurrent: () => boolean = () => true): Promise<SessionSearchPage | undefined> {
-  const query = request.query.trim().slice(0, 500).toLowerCase()
+  const query = request.query.trim().slice(0, 500)
+  // Escape the literal query; match offsets stay in the original string even when case folding changes length.
+  const matcher = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu')
   const requestedOffset = Math.max(0, Math.floor(request.offset || 0))
   const results: SessionSearchHit[] = []
   const eventTypes = new Set<string>(), sources = new Set<string>(), tools = new Set<string>()
@@ -89,11 +91,10 @@ export async function searchEvents(entries: Iterable<SearchEntry>, request: Sess
       || (request.source && source !== request.source) || (request.tool && entry.tool !== request.tool)) continue
     let matched: string | undefined
     if (query === '') matched = event.type
-    else if (event.type.toLowerCase().includes(query)) matched = event.type
     else for (const text of textValues({ type: event.type, seq: event.seq, time: event.time, data: event.data,
       surfaceOp: event.surfaceOp, sourceEventSeqs: event.sourceEventSeqs, ignorable: event.ignorable })) {
-      const index = text.toLowerCase().indexOf(query)
-      if (index >= 0) { matched = excerpt(text, index); break }
+      const match = matcher.exec(text)
+      if (match !== null) { matched = excerpt(text, match.index); break }
     }
     if (matched === undefined) continue
     if (total >= requestedOffset && results.length < 50) results.push({ sessionId: entry.sessionId, eventId: entry.eventId,

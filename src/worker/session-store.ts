@@ -220,13 +220,21 @@ export class ExplorerSessionStore {
       for (const [id, tool] of projection.tools) this.tools.set(id, tool)
       const turnPages = new Map<number, number>()
       const stepPages = new Map<string, number>()
+      const owners = new Map<string, { turn?: number; step?: number }>(projection.timeline.map(item => [item.eventId, item]))
       let position = 0
       for (const turn of projection.execution) {
         turnPages.set(turn.turn, Math.floor(position / 40) * 40)
         if (turn.steps.length === 0) position++
-        for (const step of turn.steps) stepPages.set(`${turn.turn}:${step.step}`, Math.floor(position++ / 40) * 40)
+        for (const step of turn.steps) {
+          stepPages.set(`${turn.turn}:${step.step}`, Math.floor(position++ / 40) * 40)
+          for (const id of [step.eventId, step.reasoningEventId, step.assistantEventId,
+            ...step.tools.flatMap(tool => [tool.eventId, tool.callEventId, tool.resultEventId])]) {
+            if (id !== undefined) owners.set(id, { turn: turn.turn, step: step.step })
+          }
+        }
       }
-      const owners = new Map(projection.timeline.map(item => [item.eventId, item]))
+      // Epoch coordinates belong to the header's own recording, not later steps reusing it.
+      for (const epoch of projection.promptEpochs) owners.set(epoch.eventId, { turn: epoch.turn, step: epoch.step })
       for (const [id, event] of projection.events) {
         const data = recordOf(event.data)
         const turn = typeof data?.turn === 'number' ? data.turn : owners.get(id)?.turn

@@ -71,6 +71,20 @@ try{
  await page.setViewportSize({width:1440,height:1000})
  const rootButton=page.locator('.session-tree button[data-session-id="demo-root"]');await rootButton.focus();await page.keyboard.press('ArrowDown');await page.locator('.session-tree button[data-session-id="demo-child"].selected').waitFor()
  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.theme-toggle').evaluate(el=>getComputedStyle(el).transitionDuration),'1e-05s');
+ // Exercise off-page headers and coordinate-free PTC evidence with the real Worker.
+ const navigation=[{type:'session',version:4,id:'navigation',createdAt:base,delegationDepth:0,isSeeded:false}]
+ let nextSeq=0;const addNavigation=(type,data)=>{navigation.push({type,seq:nextSeq++,time:base+nextSeq,data})}
+ addNavigation('turn/start',{turn:1})
+ for(let step=1;step<=105;step++){
+   addNavigation('step/start',{turn:1,step})
+   if(step===85)addNavigation('request/header',{reason:'initial',header:{config:{model:'header-later-page'},tools:[]}})
+   if(step===88){const data={rootCallId:'root',parentCallId:'parent',subCallId:'parent:ptc:1',name:'ptc-later-page',arguments:{}};addNavigation('tool/ptc-dispatch-start',data);addNavigation('tool/ptc-dispatch',{...data,isError:false,content:[{type:'text',text:'recorded result'}]})}
+   addNavigation('step/end',{turn:1,step})
+ }
+ const navigationPath=join(output,'navigation','session.v4.jsonl');await mkdir(join(output,'navigation'),{recursive:true});await writeFile(navigationPath,navigation.map(row=>JSON.stringify(row)).join('\n'))
+ await page.locator('input[type=file]').first().setInputFiles(navigationPath);await page.locator('.session-tree button[data-session-id="navigation"]').waitFor();await page.getByRole('dialog').waitFor({state:'hidden'})
+ await page.keyboard.press('Control+k');await page.getByRole('searchbox').fill('header-later-page');await page.getByRole('button',{name:/定位 request\/header #/}).click();await page.locator('.execution-step.focused[open]').getByText('STEP 85',{exact:true}).waitFor()
+ await page.getByRole('searchbox').fill('ptc-later-page');await page.getByRole('button',{name:/定位 tool\/ptc-dispatch #/}).click();await page.locator('.execution-step.focused[open]').getByText('STEP 88',{exact:true}).waitFor()
  assert.equal(await page.evaluate(()=>window.__storageWrites),0);assert.equal(errors.length,0);assert.equal(external.length,0)
- console.log(JSON.stringify({passed:true,callSeq,resultSeq,longSeq,sourcePreserved:true,linkedInspector:true,downloadBytes:downloaded.length,themes:2,narrowWidth:width,keyboardSessionNavigation:true,pageErrors:errors.length,externalRequests:external.length}))
+ console.log(JSON.stringify({passed:true,callSeq,resultSeq,longSeq,sourcePreserved:true,linkedInspector:true,downloadBytes:downloaded.length,themes:2,narrowWidth:width,keyboardSessionNavigation:true,offPageHeaderAndPtc:true,pageErrors:errors.length,externalRequests:external.length}))
 }finally{await browser.close();await server.close()}
