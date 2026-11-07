@@ -1,5 +1,6 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
-import type { ConversationRecord } from './model/projection.ts'
+import type { ConversationRecord, ExecutionTool } from './model/projection.ts'
+import type { SessionSearchPage, SessionSearchRequest } from './worker/search.ts'
 import type { ExplorerEvent } from './worker/parser.ts'
 import type { ExplorerWorkerRequest, ExplorerWorkerResponse, ImportPhase } from './worker/protocol.ts'
 import type { ExplorerImportView } from './worker/session-store.ts'
@@ -13,12 +14,19 @@ export function useSessionLoader() {
   const selected = useRef<string>()
   const currentView = useRef<ExplorerImportView>()
   const media = useRef<ReadonlyMap<string, string>>(new Map())
+  const searchRequestId = useRef(0)
+  const searchScopeSession = useRef<string>()
+  const eventRequestId = useRef(0)
   const [view, setView] = useState<ExplorerImportView>()
   const [revision, setRevision] = useState(0)
   const [sessionId, setSessionId] = useState<string>()
   const [conversation, setConversation] = useState<readonly ConversationRecord[]>([])
   const [conversationPage, setConversationPage] = useState({ offset: 0, total: 0, previousOffset: 0, nextOffset: 0 })
   const [event, setEvent] = useState<ExplorerEvent>()
+  const [eventTool, setEventTool] = useState<ExecutionTool>()
+  const [searchResults, setSearchResults] = useState<SessionSearchPage>()
+  const [searchBusy, setSearchBusy] = useState(false)
+  const [navigationRevision, setNavigationRevision] = useState(0)
   const [selectedEventId, setSelectedEventId] = useState<string>()
   const [error, setError] = useState<string>()
   const [notice, setNotice] = useState<string>()
@@ -39,6 +47,7 @@ export function useSessionLoader() {
       setLoading(undefined)
     } else if (worker.current !== instance) return
     setViewLoading(false)
+    setSearchBusy(false)
     setError(message)
   }
   const connect = (instance: Worker): Worker => {
@@ -66,6 +75,11 @@ export function useSessionLoader() {
         return
       }
       if (instance !== worker.current) return
+      if (data.type === 'search') {
+        if (data.requestId !== searchRequestId.current) return
+        setSearchResults(data.page); setSearchBusy(false)
+        return
+      }
       if (data.type === 'session') {
         if (data.session.id !== selected.current) return
         setView(previous => previous === undefined ? previous : { ...previous,
@@ -77,7 +91,21 @@ export function useSessionLoader() {
         setConversationPage({ offset: data.offset, total: data.total, previousOffset: data.previousOffset, nextOffset: data.nextOffset })
         setViewLoading(false)
       }
-      if (data.type === 'event') { setSelectedEventId(data.eventId); setEvent(data.event) }
+      if (data.type === 'event') {
+        if (data.requestId !== undefined && data.requestId !== eventRequestId.current) return
+        if (data.session !== undefined && data.sessionId !== undefined) {
+          if (searchScopeSession.current !== undefined && searchScopeSession.current !== data.sessionId) {
+            searchRequestId.current++; setSearchResults(undefined); setSearchBusy(false)
+          }
+          selected.current = data.sessionId; setSessionId(data.sessionId)
+          setView(previous => previous === undefined ? previous : { ...previous,
+            sessions: previous.sessions.map(session => session.id === data.session!.id ? data.session! : session) })
+          setConversation([]); setConversationPage({ offset: 0, total: 0, previousOffset: 0, nextOffset: 0 })
+          setNavigationRevision(value => value + 1)
+          setViewLoading(false)
+        }
+        setSelectedEventId(data.eventId); setEvent(data.event); setEventTool(data.tool)
+      }
       if (data.type === 'attachment' && data.bytes !== undefined) {
         const url = URL.createObjectURL(new Blob([data.bytes], { type: 'application/octet-stream' }))
         const link = document.createElement('a')
@@ -109,6 +137,7 @@ export function useSessionLoader() {
       worker.current?.terminate(); worker.current = task.worker; pending.current = null
       clearMedia(); setConversation([]); setConversationPage({ offset: 0, total: 0, previousOffset: 0, nextOffset: 0 })
       setEvent(undefined); setSelectedEventId(undefined); setError(undefined); setLoading(undefined)
+      setEventTool(undefined); setSearchResults(undefined); setSearchBusy(false)
       selected.current = view.rootSessionId
       for (const name of view.mediaNames) post({ type: 'media', name })
     } else if (selected.current === undefined) selected.current = view.rootSessionId
@@ -122,6 +151,8 @@ export function useSessionLoader() {
     catch (error) { setError(error instanceof Error ? error.message : '无法加载会话，请重试。'); return }
     const task = { worker: instance, replacing: currentView.current !== undefined }
     pending.current = task
+    searchRequestId.current++; eventRequestId.current++
+    setSearchResults(undefined); setSearchBusy(false)
     setViewLoading(false)
     setLoading({ phase: 'reading', replacing: task.replacing })
     try { instance.postMessage({ type: 'import-files', entries: files.map(file => ({ name: file.name, path: file.webkitRelativePath || file.name, file })) } satisfies ExplorerWorkerRequest) }
@@ -134,7 +165,10 @@ export function useSessionLoader() {
     setLoading(undefined); setNotice(replacing ? '已取消加载，原会话已保留。' : '已取消加载，可以重新选择文件。')
   }
   const selectSession = (id: string): void => {
+    eventRequestId.current++
+    if (searchScopeSession.current !== undefined) { searchRequestId.current++; setSearchResults(undefined); setSearchBusy(false) }
     selected.current = id; setSessionId(id); setEvent(undefined); setSelectedEventId(undefined)
+    setEventTool(undefined)
     setConversation([]); setViewLoading(true); post({ type: 'session', sessionId: id, offset: 0 })
   }
   const requestPage = (offset: number): void => {
@@ -145,8 +179,16 @@ export function useSessionLoader() {
     if (selected.current === undefined) return
     setViewLoading(true); post({ type: 'conversation', sessionId: selected.current, offset })
   }
-  const selectEvent = (eventId: string): void => { setSelectedEventId(eventId); post({ type: 'event', eventId }) }
+  const selectEvent = (eventId: string, reveal = false): void => { post({ type: 'event', eventId, requestId: ++eventRequestId.current, reveal }) }
+  const revealEvent = (eventId: string): void => { selectEvent(eventId, true) }
+  const runSearch = (search: SessionSearchRequest): void => {
+    if (worker.current === null || pending.current !== null) return
+    setSearchResults(undefined); setSearchBusy(true)
+    searchScopeSession.current = search.sessionId
+    post({ type: 'search', requestId: ++searchRequestId.current, search })
+  }
 
   return { view, revision, sessionId, conversation, conversationPage, event, selectedEventId, error, notice, loading, viewLoading,
-    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post }
+    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post,
+    eventTool, searchResults, searchBusy, runSearch, revealEvent, navigationRevision }
 }

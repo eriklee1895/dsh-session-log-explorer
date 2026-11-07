@@ -17,6 +17,7 @@ import './ExplorerWorkspace.css'
 type WorkspaceView = 'overview' | 'execution' | 'timeline' | 'conversation'
 
 export interface ExplorerWorkspaceProps {
+  readonly onErrorSearch?: () => void
   readonly loading?: boolean
   readonly onPageChange?: (offset: number) => void
   readonly conversationPage?: Omit<ExplorerConversationPage, 'records'>
@@ -138,7 +139,7 @@ function Timeline({ turns, items, selectedEventId, onEventSelect }: {
       <span>{focusedIndexes === null ? `${String(rows.length)} records` : `${String(focusedIndexes.size)} of ${String(rows.length)} records in focus`}</span>
       <button aria-pressed={allTurnsCollapsed} onClick={toggleTurns}>{allTurnsCollapsed ? 'Expand turns' : 'Collapse turns'}</button>
       <button aria-pressed={callsCollapsed} onClick={() => { setCallsCollapsed(value => !value) }}>{callsCollapsed ? 'Show tool calls' : 'Hide tool calls'}</button>
-      <input aria-label="Search trajectory" placeholder="Search records" type="search" value={search} onChange={(event) => { setSearch(event.currentTarget.value) }} />
+      <input aria-label="Search trajectory" title="仅筛选当前页的摘要；完整文本请使用上方会话搜索" placeholder="筛选本页摘要" type="search" value={search} onChange={(event) => { setSearch(event.currentTarget.value) }} />
     </div>
     <div className="trajectory-ledger"><table aria-label="Trajectory records">
       <thead><tr><th>#</th><th>Event</th><th>Content</th><th>Time</th></tr></thead>
@@ -255,6 +256,7 @@ function Execution({ epochs, turns, onEventSelect }: {
 export function ExplorerWorkspace({
   session,
   loading = false, onPageChange, conversationPage, onConversationPageChange,
+  onErrorSearch,
   conversation,
   selectedEventId,
   onEventSelect,
@@ -265,6 +267,7 @@ export function ExplorerWorkspace({
     <header className="workspace-toolbar">
       <div className="workspace-readout"><b>会话记录</b><small>{session.eventCount.toLocaleString('zh-CN')} 条事件</small></div>
       <nav aria-label="工作台视图">{(Object.keys(labels) as WorkspaceView[]).map(key => <button key={key} aria-pressed={view === key} onClick={() => { setView(key); if (key === 'conversation') onConversationPageChange?.(0) }}>{labels[key]}</button>)}</nav>
+      {session.summary.errors > 0 && <button className="error-shortcut" aria-label="查看所有错误" onClick={onErrorSearch} disabled={onErrorSearch === undefined}>{session.summary.errors} 个错误事件 ↗</button>}
     </header>
     {loading && <p className="view-loading" role="status"><span className="session-loading-spinner" aria-hidden="true" />正在加载会话视图…</p>}
     {session.page !== undefined && session.page.total > session.page.count && view !== 'overview' && view !== 'conversation' && <nav className="record-pagination" aria-label="执行记录分页">

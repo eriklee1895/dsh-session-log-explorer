@@ -1,5 +1,7 @@
 import { projectSession, type ConversationRecord, type ExecutionTool, type ExecutionTurn, type PromptEpoch, type SessionSummary, type TimelineItem } from '../model/projection.ts'
 import type { ExplorerEvent } from './parser.ts'
+import { recordOf } from './parser.ts'
+import { searchEvents, type SearchEntry, type SessionSearchRequest, type SessionSearchPage } from './search.ts'
 import { importDshArchive, importDshDirectory, importDshFile, type DshArchiveInput, type DshDirectoryEntry, type ImportedDshArchive, type ImportProgress } from './importer.ts'
 
 export interface ExplorerSessionView {
@@ -48,6 +50,7 @@ function imageReferences(value: unknown, refs: Set<string>): void {
 export class ExplorerSessionStore {
   private readonly events = new Map<string, ExplorerEvent>()
   private readonly tools = new Map<string, ExecutionTool>()
+  private readonly locations = new Map<string, { sessionId: string; offset: number }>()
   private readonly conversations = new Map<string, readonly ConversationRecord[]>()
   private readonly conversationPageOffsets = new Map<string, number[]>()
   private readonly mediaObjects = new Map<string, Uint8Array>()
@@ -72,6 +75,21 @@ export class ExplorerSessionStore {
   }
 
   tool(id: string): ExecutionTool | undefined { return this.tools.get(id) }
+
+  reveal(id: string): { sessionId: string; session: ExplorerSessionView; tool?: ExecutionTool } | undefined {
+    const location = this.locations.get(id)
+    if (location === undefined) return undefined
+    const session = this.sessionPage(location.sessionId, location.offset)
+    return session === undefined ? undefined : { sessionId: location.sessionId, session, tool: this.tools.get(id) }
+  }
+
+  search(request: SessionSearchRequest, isCurrent?: () => boolean): Promise<SessionSearchPage | undefined> {
+    const entries = function* (store: ExplorerSessionStore): Generator<SearchEntry> {
+      for (const [eventId, event] of store.events) yield { eventId, event, sessionId: store.locations.get(eventId)!.sessionId,
+        tool: store.tools.get(eventId)?.name }
+    }
+    return searchEvents(entries(this), request, isCurrent)
+  }
 
   conversation(sessionId: string): readonly ConversationRecord[] | undefined {
     return this.conversations.get(sessionId)
@@ -173,6 +191,7 @@ export class ExplorerSessionStore {
     progress?.('projecting')
     this.events.clear()
     this.tools.clear()
+    this.locations.clear()
     this.conversations.clear()
     this.conversationPageOffsets.clear()
     this.mediaObjects.clear()
@@ -185,6 +204,22 @@ export class ExplorerSessionStore {
       for (const event of session.events) imageReferences(event.data, refs)
       for (const [id, event] of projection.events) this.events.set(id, event)
       for (const [id, tool] of projection.tools) this.tools.set(id, tool)
+      const turnPages = new Map<number, number>()
+      const stepPages = new Map<string, number>()
+      let position = 0
+      for (const turn of projection.execution) {
+        turnPages.set(turn.turn, Math.floor(position / 40) * 40)
+        if (turn.steps.length === 0) position++
+        for (const step of turn.steps) stepPages.set(`${turn.turn}:${step.step}`, Math.floor(position++ / 40) * 40)
+      }
+      const owners = new Map(projection.timeline.map(item => [item.eventId, item]))
+      for (const [id, event] of projection.events) {
+        const data = recordOf(event.data)
+        const turn = typeof data?.turn === 'number' ? data.turn : owners.get(id)?.turn
+        const step = typeof data?.step === 'number' ? data.step : owners.get(id)?.step
+        this.locations.set(id, { sessionId: session.header.id,
+          offset: stepPages.get(`${turn}:${step}`) ?? turnPages.get(turn ?? -1) ?? 0 })
+      }
       this.conversations.set(session.header.id, projection.conversation)
       return {
         id: session.header.id,

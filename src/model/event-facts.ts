@@ -11,7 +11,7 @@ export function messageLabel(source: string): string {
   const labels: Readonly<Record<string, string>> = {
     user: '用户输入', 'runtime-context': '运行时上下文', 'agent-message': 'Agent 消息',
     'team-message': '团队消息', 'subagent-settled': '子代理通知', goal: '目标续轮',
-    compaction: '压缩摘要', unknown: '来源未记录',
+    compaction: '压缩摘要', unknown: '来源未记录', model: '模型', tool: '工具', 'system-prompt': '系统提示词',
   }
   return labels[source] ?? `消息 · ${source}`
 }

@@ -1,5 +1,6 @@
 import { type CSSProperties, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSessionLoader } from './useSessionLoader.ts'
+import { SessionSearch } from './ui/SessionSearch.tsx'
 import { ExplorerWorkspace } from './ui/ExplorerWorkspace.tsx'
 import { StructuredJson } from './ui/StructuredJson.tsx'
 import { recordOf, type ExplorerEvent } from './worker/parser.ts'
@@ -64,7 +65,9 @@ export function App(): React.JSX.Element {
   const cancelButton = useRef<HTMLButtonElement | null>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const { view, revision, sessionId, conversation, conversationPage, event, selectedEventId, error, notice, loading, viewLoading,
-    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post } = useSessionLoader()
+    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post,
+    searchResults, searchBusy, runSearch, revealEvent, navigationRevision } = useSessionLoader()
+  const [errorFocus, setErrorFocus] = useState({ revision: 0, count: 0 })
   const [isDragging, setDragging] = useState(false)
   const [inspectorWidth, setInspectorWidth] = useState(400)
   const isLoading = loading !== undefined
@@ -116,7 +119,10 @@ export function App(): React.JSX.Element {
       <dl className="import-specs"><div><dt>支持格式</dt><dd>JSONL · ZSTD · ZIP</dd></div><div><dt>会话目录</dt><dd>从目录入口选择</dd></div><div><dt>格式版本</dt><dd>DSH SESSION V0–V4</dd></div></dl>
     </section> : <section className="explorer-layout" style={{ '--inspector-width': `${String(inspectorWidth)}px` } as CSSProperties}>
       <aside className="session-tree"><h2><span>SESSION TREE</span><small>{view.sessions.length} NODES</small></h2>{view.sessions.map(session => <button className={session.id === selected?.id ? 'selected' : ''} key={session.id} onClick={() => { selectSession(session.id) }} style={{ paddingInlineStart: `${String(12 + sessionDepth(session, view.sessions) * 18)}px` }}><strong>{session.id === view.rootSessionId ? 'ROOT SESSION' : 'SUBAGENT'}</strong><span>{session.summary.turns} turns · {session.summary.toolCalls} tools</span></button>)}<p>{view.mediaNames.length} LOCAL MEDIA ATTACHMENTS</p><button className="replace-session" disabled={isLoading} onClick={openFilePicker}>REPLACE SESSION</button></aside>
-      <section className="content">{selected !== undefined && <ExplorerWorkspace key={`${revision}:${selected.id}`} loading={viewLoading} onPageChange={requestPage} conversationPage={conversationPage} onConversationPageChange={requestConversation} session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} />}</section>
+      <section className="content">{selected !== undefined && <>
+        <SessionSearch key={revision} sessionId={selected.id} page={searchResults} busy={searchBusy} disabled={isLoading} errorFocus={errorFocus.revision === revision ? errorFocus.count : 0} onSearch={runSearch} onReveal={revealEvent} />
+        <ExplorerWorkspace key={`${revision}:${navigationRevision}:${selected.id}`} loading={viewLoading} onPageChange={requestPage} conversationPage={conversationPage} onConversationPageChange={requestConversation} session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} onErrorSearch={() => { setErrorFocus(value => ({ revision, count: value.revision === revision ? value.count + 1 : 1 })) }} />
+      </>}</section>
       <div aria-label="Resize inspector" aria-orientation="vertical" aria-valuemax={INSPECTOR_MAX_WIDTH} aria-valuemin={INSPECTOR_MIN_WIDTH} aria-valuenow={inspectorWidth} className="inspector-resize" onKeyDown={resizeInspectorWithKeyboard} onPointerDown={beginInspectorResize} role="separator" tabIndex={0} />
       <aside className="inspector-rail"><Inspector event={event} />
         {(view.attachmentNames?.length ?? 0) > 0 && <section className="media-panel">
