@@ -21,7 +21,9 @@ npx @eriklee1895/dsh-session-log-explorer
 ## 它能帮助你学习什么
 
 - 按 Agent 的已记录决策还原 turn 与 step，无需直接阅读原始 chunk 事件。
-- 在同一工作区串联工具调用、推理、模型回复、错误与对应的原始事件。
+- 在同一工作区串联工具调用、推理、模型回复、错误与对应的原始事件。调用和结果分别链接到原始记录，区分尚未返回和空结果，重试 attempt 与已落定消息分开展示。
+- 使用 Ctrl/Cmd K 搜索当前会话或全部已导入会话的完整事件文本，跳转到当前执行页以外的记录；可按事件类型、消息来源、工具和已记录错误筛选。
+- 区分用户输入、运行时上下文与 Agent 消息；展示已记录的 Turn 终态，不把未结束的 Turn 推断为成功。工作区支持浅色和深色切换，偏好不会持久保存。
 - 查看每个请求实际生效的 rendered system prompt、模型配置与工具目录；对比有意义的 prompt 或工具变更，不重复展示未变化的恢复快照。
 - 阅读 [DSH 请求上下文 Epoch](docs/request-context-epochs.zh.md)，理解这些快照为何出现、如何用于回放与恢复。
 - 从 [如何读一份 DSH Session Log](docs/session-semantics.zh.md) 开始，建立 Session、Turn、Step、surface、compaction 与 subagent 的整体心智模型。
@@ -46,6 +48,12 @@ npx @eriklee1895/dsh-session-log-explorer
 ### 学习 Agent 轨迹
 
 ![包含 Sequence、Active time 和 Wall clock 的时间线](docs/screenshots/trajectory.png)
+
+### 定位原始证据
+
+![深色模式下的完整会话搜索和原始事件检查器](docs/screenshots/search.png)
+
+搜索语义、来源与终态标签、预览限制见 [调试导航说明](docs/debugger-navigation.md)。截图全部使用合成数据。
 
 ## 隐私
 

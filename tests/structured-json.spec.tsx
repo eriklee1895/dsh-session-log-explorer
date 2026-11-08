@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { StructuredJson } from '../src/ui/StructuredJson.tsx'
 
 describe('StructuredJson', () => {
+  it('bounds oversized previews and offers the complete text as a local download', () => {
+    const { container } = render(<StructuredJson value={JSON.stringify({ payload: 'x'.repeat(200_000) })} empty="none" />)
+    expect(container.textContent!.length).toBeLessThan(35_000)
+    expect(screen.getByRole('button', { name: '保存完整内容' })).toBeTruthy()
+    expect(screen.getByText(/内容较大/)).toBeTruthy()
+  })
   afterEach(() => { cleanup() })
 
   it('renders nested JSON as a DevTools-style inline tree', () => {

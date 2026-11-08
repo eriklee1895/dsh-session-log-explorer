@@ -1,0 +1,25 @@
+.session-search { background: var(--canvas); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
+.search-launch { align-items: center; background: transparent; border: 0; color: var(--muted); display: flex; gap: 12px; min-height: 48px; padding: 0 16px; text-align: left; width: 100%; }
+.search-launch > span { color: var(--accent); font-size: 24px; }
+.search-launch strong { color: var(--ink); font-size: 13px; font-weight: 550; }
+.search-launch small { font-size: 11px; }
+.search-launch kbd { border: 1px solid var(--line); border-radius: 4px; font: 10px/1.5 var(--mono); margin-left: auto; padding: 2px 5px; }
+.search-panel { border-top: 1px solid var(--line); padding: 16px; }
+.search-query { display: flex; flex-wrap: wrap; gap: 8px; }
+.search-panel input[type='search'] { flex: 1 1 220px; min-width: 0; }
+.search-panel input[type='search'], .search-panel select { background: var(--canvas); border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 12px; min-height: 36px; padding: 7px 9px; }
+.search-filters { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.search-filters select { max-width: 190px; }
+.search-filters label { align-items: center; color: var(--muted); display: flex; font-size: 12px; gap: 5px; }
+.search-status { color: var(--muted); font: 11px/1.6 var(--mono); margin: 14px 0 8px; }
+.search-results { list-style: none; margin: 0 0 12px; max-height: 440px; overflow: auto; padding: 0; }
+.search-results li + li { border-top: 1px solid var(--line); }
+.search-results button { background: transparent; border: 0; border-radius: 6px; color: var(--ink); display: grid; gap: 7px; padding: 12px 9px; text-align: left; width: 100%; }
+.search-results button:hover { background: var(--accent-soft); }
+.search-result-meta { align-items: center; color: var(--muted); display: flex; flex-wrap: wrap; font-size: 10px; gap: 10px; }
+.search-result-meta b { color: var(--accent); font-weight: 600; }
+.search-result-meta code { margin-left: auto; }
+.search-excerpt { font: 11px/1.65 var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+.search-note, .search-empty { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 10px 0 0; }
+.error-badge { color: var(--danger, #bc4040) !important; }
+@media (max-width: 720px) { .search-launch small, .search-launch kbd { display: none; } .search-panel { padding: 12px; } }

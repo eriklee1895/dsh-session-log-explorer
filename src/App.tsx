@@ -1,14 +1,11 @@
-import { type CSSProperties, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSessionLoader } from './useSessionLoader.ts'
+import { SessionSearch } from './ui/SessionSearch.tsx'
 import { ExplorerWorkspace } from './ui/ExplorerWorkspace.tsx'
-import { StructuredJson } from './ui/StructuredJson.tsx'
-import { recordOf, type ExplorerEvent } from './worker/parser.ts'
+import { Inspector } from './ui/Inspector.tsx'
 import type { ExplorerSessionView } from './worker/session-store.ts'
 import './App.css'
-
-function formatTime(time: number): string {
-  return new Date(time).toLocaleString('zh-CN', { hour12: false })
-}
+import './Workbench.css'
 
 const INSPECTOR_MIN_WIDTH = 280
 const INSPECTOR_MAX_WIDTH = 960
@@ -34,28 +31,6 @@ function UploadGlyph(): React.JSX.Element {
   </svg>
 }
 
-function Inspector({ event }: { readonly event: ExplorerEvent | undefined }): React.JSX.Element {
-  const [tab, setTab] = useState<'details' | 'input' | 'output' | 'raw'>('details')
-  if (event === undefined) return <aside className="inspector empty"><h2>事件详情</h2><p>从时间线或对话中选择一个事件。</p></aside>
-  const data = recordOf(event.data) ?? {}
-  const toolInput = typeof data.arguments === 'string' ? data.arguments : undefined
-  const toolOutput = event.type === 'tool/result' ? JSON.stringify(data.message, undefined, 2) : undefined
-  const content = tab === 'details' ? JSON.stringify({ data: event.data, surfaceOp: event.surfaceOp, sourceEventSeqs: event.sourceEventSeqs, ignorable: event.ignorable }, undefined, 2)
-    : tab === 'input' ? toolInput ?? '此事件没有单独记录输入。'
-      : tab === 'output' ? toolOutput ?? '此事件没有单独记录输出。'
-        : event.rawRecord
-  return <aside className="inspector">
-    <h2>事件详情</h2>
-    <dl>
-      <div><dt>类型</dt><dd>{event.type}</dd></div>
-      <div><dt>序号</dt><dd>{event.seq}</dd></div>
-      <div><dt>时间</dt><dd>{formatTime(event.time)}</dd></div>
-    </dl>
-    <div className="inspector-tabs"><button aria-pressed={tab === 'details'} onClick={() => { setTab('details') }}>详情</button><button aria-pressed={tab === 'input'} onClick={() => { setTab('input') }}>输入</button><button aria-pressed={tab === 'output'} onClick={() => { setTab('output') }}>输出</button><button aria-pressed={tab === 'raw'} onClick={() => { setTab('raw') }}>原始 JSON</button></div>
-    {tab === 'raw' ? <pre>{content}</pre> : <StructuredJson className="inspector-json" value={content} empty="此事件未记录可显示内容。" />}
-  </aside>
-}
-
 /** Standalone browser shell for reviewing locally selected DSH session artifacts. */
 export function App(): React.JSX.Element {
   const fileInput = useRef<HTMLInputElement | null>(null)
@@ -64,10 +39,18 @@ export function App(): React.JSX.Element {
   const cancelButton = useRef<HTMLButtonElement | null>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const { view, revision, sessionId, conversation, conversationPage, event, selectedEventId, error, notice, loading, viewLoading,
-    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post } = useSessionLoader()
+    mediaUrls, importFiles, cancelImport, selectSession, selectEvent, requestPage, requestConversation, post,
+    searchResults, searchBusy, runSearch, revealEvent, navigationRevision, eventTool } = useSessionLoader()
+  const [errorFocus, setErrorFocus] = useState({ revision: 0, count: 0 })
   const [isDragging, setDragging] = useState(false)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light')
   const [inspectorWidth, setInspectorWidth] = useState(400)
   const isLoading = loading !== undefined
+  useEffect(() => {
+    const previous = document.documentElement.dataset.theme
+    document.documentElement.dataset.theme = theme
+    return () => { if (previous === undefined) delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = previous }
+  }, [theme])
   useLayoutEffect(() => {
     content.current?.toggleAttribute('inert', isLoading)
     if (isLoading) {
@@ -103,7 +86,11 @@ export function App(): React.JSX.Element {
 
   return <main className="app-shell">
     <div ref={content}>
-    <header className="app-header import-header"><strong><img aria-hidden="true" className="brand-mark" src="/favicon.svg" />DSH Session Log Explorer</strong><span>Offline DeepSeek Harness Session Viewer</span></header>
+    <header className="app-header import-header"><strong><img aria-hidden="true" className="brand-mark" src="/favicon.svg" /><span className="brand-title">DSH Session Log Explorer</span></strong><span className="header-subtitle">DEEPSEEK HARNESS · LOCAL WORKSPACE</span>
+      <div className="header-actions"><span className="privacy-indicator"><i aria-hidden="true" />LOCAL ONLY</span><button className="theme-toggle" aria-label={theme === 'light' ? '切换为深色模式' : '切换为浅色模式'} title={theme === 'light' ? '切换为深色模式' : '切换为浅色模式'} onClick={() => { setTheme(value => value === 'light' ? 'dark' : 'light') }}>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">{theme === 'light' ? <path d="M20 14a8 8 0 0 1-10-10 8 8 0 1 0 10 10Z" /> : <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></>}</svg>
+      </button></div>
+    </header>
     <input ref={fileInput} className="visually-hidden" type="file" accept=".jsonl,.zstd,.zip" multiple disabled={isLoading} onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; importFiles(files) }} />
     <input ref={(node) => { directoryInput.current = node; node?.setAttribute('webkitdirectory', '') }} className="visually-hidden" type="file" multiple disabled={isLoading} onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; importFiles(files) }} />
     {view === undefined ? <section className="import-panel" aria-label="本地会话拖放区">
@@ -115,10 +102,25 @@ export function App(): React.JSX.Element {
       <button className="directory-import" disabled={isLoading} onClick={() => { directoryInput.current?.click() }}>选择会话目录</button>
       <dl className="import-specs"><div><dt>支持格式</dt><dd>JSONL · ZSTD · ZIP</dd></div><div><dt>会话目录</dt><dd>从目录入口选择</dd></div><div><dt>格式版本</dt><dd>DSH SESSION V0–V4</dd></div></dl>
     </section> : <section className="explorer-layout" style={{ '--inspector-width': `${String(inspectorWidth)}px` } as CSSProperties}>
-      <aside className="session-tree"><h2><span>SESSION TREE</span><small>{view.sessions.length} NODES</small></h2>{view.sessions.map(session => <button className={session.id === selected?.id ? 'selected' : ''} key={session.id} onClick={() => { selectSession(session.id) }} style={{ paddingInlineStart: `${String(12 + sessionDepth(session, view.sessions) * 18)}px` }}><strong>{session.id === view.rootSessionId ? 'ROOT SESSION' : 'SUBAGENT'}</strong><span>{session.summary.turns} turns · {session.summary.toolCalls} tools</span></button>)}<p>{view.mediaNames.length} LOCAL MEDIA ATTACHMENTS</p><button className="replace-session" disabled={isLoading} onClick={openFilePicker}>REPLACE SESSION</button></aside>
-      <section className="content">{selected !== undefined && <ExplorerWorkspace key={`${revision}:${selected.id}`} loading={viewLoading} onPageChange={requestPage} conversationPage={conversationPage} onConversationPageChange={requestConversation} session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} />}</section>
+      <aside className="session-tree" onKeyDown={event => {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+        const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-session-id]')]
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+        if (index < 0) return
+        event.preventDefault()
+        const next = buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))]
+        next?.focus(); if (next?.dataset.sessionId !== undefined) selectSession(next.dataset.sessionId)
+      }}><h2><span>SESSION TREE</span><small>{view.sessions.length} NODES</small></h2>{view.sessions.map(session => <button data-session-id={session.id} aria-current={session.id === selected?.id ? 'true' : undefined} className={session.id === selected?.id ? 'selected' : ''} key={session.id} onClick={() => { selectSession(session.id) }} style={{ paddingInlineStart: `${String(12 + sessionDepth(session, view.sessions) * 18)}px` }}>
+        <strong>{session.id === view.rootSessionId ? 'ROOT SESSION' : 'SUBAGENT'}</strong><b className="session-name" title={session.title ?? session.id}>{session.title ?? session.id.slice(0, 16)}</b>
+        <span>{session.summary.turns} turns · {session.summary.toolCalls} tools{session.summary.errors > 0 ? ` · ${session.summary.errors} errors` : ''}</span>
+        <span className="session-facts">{session.formatVersion !== undefined ? `V${session.formatVersion}` : 'DSH'}{session.model !== undefined ? ` · ${session.model}` : ''}</span>
+      </button>)}<p>{view.mediaNames.length} LOCAL MEDIA ATTACHMENTS<br /><small>↑ ↓ 切换会话 · Ctrl K 搜索</small></p><button className="replace-session" disabled={isLoading} onClick={openFilePicker}>REPLACE SESSION</button></aside>
+      <section className="content">{selected !== undefined && <>
+        <SessionSearch key={revision} sessionId={selected.id} page={searchResults} busy={searchBusy} disabled={isLoading} errorFocus={errorFocus.revision === revision ? errorFocus.count : 0} onSearch={runSearch} onReveal={revealEvent} />
+        <ExplorerWorkspace key={`${revision}:${navigationRevision}:${selected.id}`} loading={viewLoading} onPageChange={requestPage} conversationPage={conversationPage} onConversationPageChange={requestConversation} session={selected} conversation={conversation} selectedEventId={selectedEventId} onEventSelect={selectEvent} onErrorSearch={() => { setErrorFocus(value => ({ revision, count: value.revision === revision ? value.count + 1 : 1 })) }} />
+      </>}</section>
       <div aria-label="Resize inspector" aria-orientation="vertical" aria-valuemax={INSPECTOR_MAX_WIDTH} aria-valuemin={INSPECTOR_MIN_WIDTH} aria-valuenow={inspectorWidth} className="inspector-resize" onKeyDown={resizeInspectorWithKeyboard} onPointerDown={beginInspectorResize} role="separator" tabIndex={0} />
-      <aside className="inspector-rail"><Inspector event={event} />
+      <aside className="inspector-rail"><Inspector event={event} tool={eventTool} onEventSelect={selectEvent} />
         {(view.attachmentNames?.length ?? 0) > 0 && <section className="media-panel">
           <h2>LOCAL FILES</h2>
           {view.attachmentNames?.map(path => <button key={path} onClick={() => { post({ type: 'attachment', path }) }}>{path.split('/').at(-1)}</button>)}

@@ -1,5 +1,6 @@
 import { recordOf, type ExplorerEvent, type ParsedSessionJsonl } from '../worker/parser.ts'
 import { decodeAssistantStream } from '../worker/chunk-codec.ts'
+import { isErrorEvent, messageLabel, messageSource, turnOutcomeLabel, toolResultIdentity } from './event-facts.ts'
 
 export type TimelineKind = 'user' | 'reasoning' | 'tool' | 'assistant' | 'system'
 
@@ -21,6 +22,9 @@ export interface TimelineItem {
   readonly start: number
   readonly end: number
   readonly eventSeqs: readonly number[]
+  readonly turn?: number
+  readonly step?: number
+  readonly severity?: 'error' | 'diagnostic'
 }
 
 export interface ConversationRecord {
@@ -29,6 +33,7 @@ export interface ConversationRecord {
   readonly label: string
   readonly content: string
   readonly eventSeqs: readonly number[]
+  readonly source?: string
 }
 
 export interface ExecutionTool {
@@ -38,9 +43,14 @@ export interface ExecutionTool {
   readonly output: string
   readonly failed: boolean
   readonly parentCallId?: string
+  readonly callEventId?: string
+  readonly resultEventId?: string
+  readonly status?: 'pending' | 'returned' | 'error' | 'orphan'
+  readonly previewed?: boolean
 }
 
 export interface ExecutionStep {
+  readonly previewed?: boolean
   readonly id: string
   readonly eventId: string
   readonly turn: number
@@ -80,9 +90,12 @@ export interface ExecutionTurn {
   readonly turn: number
   readonly start: number
   readonly end: number
-  readonly prompt: { readonly eventId: string; readonly content: string } | undefined
+  readonly prompt: { readonly eventId: string; readonly content: string; readonly previewed?: boolean } | undefined
   readonly promptEpochs: readonly PromptEpoch[]
   readonly steps: readonly ExecutionStep[]
+  readonly outcome?: { readonly kind: string; readonly label: string; readonly eventId: string }
+  readonly inputs?: readonly { readonly eventId: string; readonly source: string; readonly label: string; readonly preview: string }[]
+  readonly inputCount?: number
 }
 
 export interface SessionProjection {
@@ -92,6 +105,8 @@ export interface SessionProjection {
   readonly execution: readonly ExecutionTurn[]
   readonly promptEpochs: readonly PromptEpoch[]
   readonly events: ReadonlyMap<string, ExplorerEvent>
+  readonly tools: ReadonlyMap<string, ExecutionTool>
+  readonly diagnostics: readonly ConversationRecord[]
 }
 
 function eventId(sessionId: string, event: ExplorerEvent): string {
@@ -151,6 +166,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
   const conversation: ConversationRecord[] = []
   const promptEpochs: PromptEpoch[] = []
   const events = new Map<string, ExplorerEvent>()
+  const tools = new Map<string, ExecutionTool>()
+  const diagnostics: ConversationRecord[] = []
   const reasoning = new Map<string, { item: TimelineItem; record: ConversationRecord }>()
   const pendingCalls = new Map<string, { readonly event: ExplorerEvent; readonly step: ExecutionStepBuilder | undefined; readonly tool: ExecutionTool }[]>()
   const stepsById = new Map<string, ExecutionStepBuilder>()
@@ -178,7 +195,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     }
     const builder: ExecutionTurnBuilder = {
       id: `${session.header.id}:turn:${String(turn)}`, turn, start: time, end: time,
-      prompt: undefined, promptEpochs: [], steps: [],
+      prompt: undefined, promptEpochs: [], steps: [], inputs: [],
     }
     turnsByNumber.set(turn, builder)
     return builder
@@ -219,9 +236,14 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     return builder
   }
 
-  const append = (item: TimelineItem, record?: ConversationRecord): void => {
-    timeline.push(item)
+  const append = (item: TimelineItem, record?: ConversationRecord): TimelineItem => {
+    const owner = recordOf(events.get(item.eventId)?.data)
+    const turn = dataIndex(owner ?? {}, 'turn') ?? item.turn ?? activeTurn
+    const step = dataIndex(owner ?? {}, 'step') ?? item.step ?? (activeStep?.turn === turn ? activeStep?.step : undefined)
+    const appended = { ...item, ...(turn === undefined ? {} : { turn }), ...(step === undefined ? {} : { step }) }
+    timeline.push(appended)
     if (record !== undefined) conversation.push(record)
+    return appended
   }
   for (const event of session.events) {
     const id = eventId(session.header.id, event)
@@ -247,6 +269,27 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     if (event.type === 'step/start' && step !== undefined) activeStep = step
     const turn = dataIndex(data, 'turn') ?? activeTurn
     if (turn !== undefined) ensureTurn(turn, event.time)
+    if (isErrorEvent(event)) {
+      errors++
+      if (step !== undefined) step.errors++
+    }
+    if (event.type === 'turn/end') {
+      const reason = recordOf(data.reason)
+      const kind = typeof reason?.kind === 'string' ? reason.kind : typeof data.reason === 'string' ? data.reason : undefined
+      if (turn !== undefined && kind !== undefined) ensureTurn(turn, event.time).outcome = { kind, label: turnOutcomeLabel(kind), eventId: id }
+      if (kind === 'error') append({ id, eventId: id, kind: 'system', label: 'Turn 出错', start: event.time, end: event.time, eventSeqs: [event.seq], severity: 'error' })
+      if (activeStep?.turn === turn) activeStep = undefined
+      if (activeTurn === turn) activeTurn = undefined
+      continue
+    }
+    if (event.type === 'assistant/attempt') {
+      const preview = decodeAssistantStream(data.stream ?? []).slice(0, 8).flatMap(({ chunk }) => typeof chunk.text === 'string' ? [chunk.text.slice(0, 220)] : []).join('')
+      const diagnostic = { eventId: id, kind: 'system' as const, label: event.type,
+        content: preview || '此尝试未提交为会话消息；查看原始事件。', eventSeqs: [event.seq] }
+      diagnostics.push(diagnostic)
+      append({ id, eventId: id, kind: 'system', label: event.type, start: event.time, end: event.time, eventSeqs: [event.seq], severity: 'diagnostic' })
+      continue
+    }
 
     if (event.type === 'request/header') {
       const header = recordOf(data.header) ?? {}
@@ -296,9 +339,15 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
 
     if (event.type === 'user/message') {
       const content = textOf(data.content)
-      if (turn !== undefined && content !== '') ensureTurn(turn, event.time).prompt = { eventId: id, content }
-      append({ id, eventId: id, kind: 'user', label: '用户输入', start: event.time, end: event.time, eventSeqs: [event.seq] }, {
-        eventId: id, kind: 'user', label: '用户输入', content, eventSeqs: [event.seq],
+      const source = messageSource(data)
+      const label = messageLabel(source)
+      if (turn !== undefined) {
+        const owner = ensureTurn(turn, event.time)
+        owner.inputs.push({ eventId: id, source, label, preview: content.slice(0, 220) })
+        if (source === 'user' && content !== '' && owner.prompt === undefined) owner.prompt = { eventId: id, content }
+      }
+      append({ id, eventId: id, kind: 'user', label, start: event.time, end: event.time, eventSeqs: [event.seq] }, {
+        eventId: id, kind: 'user', label, source, content, eventSeqs: [event.seq],
       })
       continue
     }
@@ -314,8 +363,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       if (existing === undefined) {
         const item: TimelineItem = { id, eventId: id, kind: 'reasoning', label: '模型推理', start: event.time, end: event.time, eventSeqs: [event.seq] }
         const record: ConversationRecord = { eventId: id, kind: 'reasoning', label: '模型推理', content: chunk.text, eventSeqs: [event.seq] }
-        reasoning.set(key, { item, record })
-        append(item, record)
+        reasoning.set(key, { item: append(item, record), record })
       } else {
         const nextItem = { ...existing.item, end: event.time, eventSeqs: [...existing.item.eventSeqs, event.seq] }
         const nextRecord = {
@@ -333,7 +381,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       toolCalls++
       const calls = pendingCalls.get(positionOf(event)) ?? []
       const tool: ExecutionTool = { eventId: id, name: typeof data.name === 'string' ? data.name : '工具调用',
-        input: typeof data.arguments === 'string' ? data.arguments : '', output: '', failed: false }
+        input: typeof data.arguments === 'string' ? data.arguments : '', output: '', failed: false, callEventId: id, status: 'pending' }
+      tools.set(id, tool)
       if (step !== undefined) step.tools.push(tool)
       calls.push({ event, step, tool })
       pendingCalls.set(positionOf(event), calls)
@@ -343,9 +392,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       toolResults++
       const message = recordOf(data.message)
       const legacy = Array.isArray(message?.content) ? message.content.map(recordOf).find(block => block?.type === 'tool-result') : undefined
-      const resultId = message?.toolCallId ?? legacy?.toolCallId
-      const failed = message?.isError === true || legacy?.isError === true || data.error !== undefined
-      if (failed) errors++
+      const { callId: resultId, failed } = toolResultIdentity(data)
       const calls = pendingCalls.get(positionOf(event))
       const callIndex = resultId === undefined ? 0 : calls?.findIndex(call => recordOf(call.event.data)?.callId === resultId) ?? -1
       const call = callIndex < 0 ? undefined : calls?.splice(callIndex, 1)[0]
@@ -353,7 +400,9 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       const name = call?.tool.name ?? '工具调用'
       const content = textOf(legacy?.content ?? message?.content)
       const toolStep = call?.step ?? step
-      const completed: ExecutionTool = { eventId: callId, name, input: call?.tool.input ?? '', output: content, failed }
+      const completed: ExecutionTool = { eventId: callId, name, input: call?.tool.input ?? '', output: content, failed,
+        ...(call === undefined ? {} : { callEventId: callId }), resultEventId: id, status: call === undefined ? 'orphan' : failed ? 'error' : 'returned' }
+      tools.set(callId, completed); tools.set(id, completed)
       if (toolStep !== undefined) {
         const index = call === undefined ? -1 : toolStep.tools.indexOf(call.tool)
         if (index < 0) toolStep.tools.push(completed)
@@ -361,7 +410,7 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       }
       append({
         id: callId, eventId: callId, kind: 'tool', label: name, start: call?.event.time ?? event.time, end: event.time,
-        eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq],
+        eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq], ...(failed ? { severity: 'error' as const } : {}),
       }, {
         eventId: callId, kind: 'tool', label: name, content, eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq],
       })
@@ -376,7 +425,11 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
         input: typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments ?? {}),
         output: textOf(data.content), failed: data.isError === true,
         ...(typeof data.parentCallId === 'string' ? { parentCallId: data.parentCallId } : {}),
+        ...(event.type.endsWith('-start') ? { callEventId: id, status: 'pending' } : { resultEventId: id,
+          ...(call === undefined ? {} : { callEventId: call.event.seq === event.seq ? id : eventId(session.header.id, call.event) }),
+          status: call === undefined ? 'orphan' : data.isError === true ? 'error' : 'returned' }),
       }
+      tools.set(tool.eventId, tool); tools.set(id, tool)
       const existing = call === undefined || toolStep === undefined ? -1 : toolStep.tools.indexOf(call.tool)
       if (toolStep !== undefined) {
         if (existing < 0) toolStep.tools.push(tool)
@@ -386,7 +439,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       else {
         ptcCalls.delete(key)
         append({ id: tool.eventId, eventId: tool.eventId, kind: 'tool', label: tool.name, start: call?.event.time ?? event.time, end: event.time,
-          eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq] }, {
+          turn: toolStep?.turn, step: toolStep?.step,
+          eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq], ...(tool.failed ? { severity: 'error' as const } : {}) }, {
           eventId: tool.eventId, kind: 'tool', label: tool.name, content: tool.output, eventSeqs: call === undefined ? [event.seq] : [call.event.seq, event.seq],
         })
       }
@@ -426,12 +480,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
       })
       continue
     }
-    if (event.type === 'agent/error') {
-      errors++
-      if (step !== undefined) step.errors++
-    }
     if (!['turn/start', 'turn/end', 'step/start', 'step/end', 'request/header', 'request/context'].includes(event.type)) {
-      append({ id, eventId: id, kind: 'system', label: event.type, start: event.time, end: event.time, eventSeqs: [event.seq] }, {
+      append({ id, eventId: id, kind: 'system', label: event.type, start: event.time, end: event.time, eventSeqs: [event.seq], ...(isErrorEvent(event) ? { severity: 'error' as const } : {}) }, {
         eventId: id, kind: 'system', label: event.type, content: event.type === 'system/message' || event.type === 'developer/message'
           ? textOf(recordOf(data.message)?.content) : JSON.stringify(event.data), eventSeqs: [event.seq],
       })
@@ -451,6 +501,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     start: turn.start,
     end: turn.end,
     prompt: turn.prompt,
+    inputs: turn.inputs,
+    ...(turn.outcome === undefined ? {} : { outcome: turn.outcome }),
     promptEpochs: turn.promptEpochs,
     steps: turn.steps.sort((a, b) => a.step - b.step).map(step => ({
       id: step.id,
@@ -480,6 +532,8 @@ export function projectSession(session: ParsedSessionJsonl): SessionProjection {
     execution,
     promptEpochs,
     events,
+    tools,
+    diagnostics,
   }
 }
 
@@ -508,4 +562,6 @@ interface ExecutionTurnBuilder {
   prompt: { readonly eventId: string; readonly content: string } | undefined
   readonly promptEpochs: PromptEpoch[]
   readonly steps: ExecutionStepBuilder[]
+  readonly inputs: { readonly eventId: string; readonly source: string; readonly label: string; readonly preview: string }[]
+  outcome?: { readonly kind: string; readonly label: string; readonly eventId: string }
 }

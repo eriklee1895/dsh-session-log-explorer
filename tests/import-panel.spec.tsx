@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../src/App.tsx'
 
@@ -12,7 +12,18 @@ class WorkerStub {
 }
 
 describe('import panel', () => {
-  afterEach(() => { vi.unstubAllGlobals() })
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+  it('switches light and dark appearance without storing browser data', () => {
+    vi.stubGlobal('Worker', WorkerStub)
+    const store = vi.spyOn(Storage.prototype, 'setItem')
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }))
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    fireEvent.click(screen.getByRole('button', { name: '切换为浅色模式' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(store).not.toHaveBeenCalled()
+  })
 
   it('presents one large labeled drop region with a file-picker fallback', () => {
     vi.stubGlobal('Worker', WorkerStub)
