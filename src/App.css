@@ -82,7 +82,7 @@ button:disabled, .file-dropzone[aria-disabled='true'] { cursor: wait; opacity: .
 @keyframes session-loading-spin { to { transform: rotate(360deg); } }
 
 .explorer-layout { background: var(--paper); display: grid; grid-template-columns: 252px minmax(0, 1fr) 14px var(--inspector-width, 400px); min-height: calc(100vh - 68px); }
-.session-tree { align-content: start; background: #f8fafc; border-right: 1px solid var(--line); color: var(--ink); display: grid; gap: 5px; padding: 18px 11px; }
+.session-tree { align-content: start; background: #f8fafc; border-right: 1px solid var(--line); color: var(--ink); display: grid; gap: 5px; grid-auto-rows: max-content; padding: 18px 11px; }
 .session-tree h2 { align-items: center; display: flex; font: 11px/1 var(--mono); justify-content: space-between; letter-spacing: .1em; margin: 5px 9px 16px; text-transform: uppercase; }
 .session-tree h2 span::after { background: var(--accent); border-radius: 50%; content: ""; display: inline-block; height: 6px; margin-left: 7px; width: 6px; }
 .session-tree h2 small { color: var(--muted); font: 10px/1 var(--mono); letter-spacing: .04em; }
